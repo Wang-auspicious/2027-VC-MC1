@@ -156,12 +156,14 @@
     const dms=dmPairs.slice(0,6).map(([key,list])=>{const [a,b]=pairNames(key),last=list.at(-1);return `<button class="dashboard-conversation" data-open-pair="${key}"><span class="pair-avatar">${avatar({agent_label:a})}${avatar({agent_label:b})}</span><span><strong>${actorDefs[a].zh} × ${actorDefs[b].zh}</strong><small>${esc(short(messageText(last)).slice(0,52))}</small></span><time>${fmtTime(last.timestamp)}</time></button>`}).join("");
     const posts=messages.filter(m=>publicChannels.has(m.channel)).slice(-4).reverse().map(m=>`<button class="dashboard-post" data-open-post="${m.message_id}">${avatar(m)}<span><strong>${actor(m).zh} · ${m.channel_label_zh}</strong><p>${esc(short(messageText(m)).slice(0,105))}</p></span><time>${fmtTime(m.timestamp)}</time></button>`).join("");
     $("#message-list").className="message-list dashboard-view";
-    $("#message-list").innerHTML=`<section class="dashboard-block"><div class="dashboard-block-title"><b>群组会话</b><span>2 个活跃空间</span></div><div class="dashboard-conversations">${groups}</div></section>
+    $("#message-list").innerHTML=`<section class="reading-route"><span>从这里开始</span><h2>这不是“有没有泄漏”，而是“谁让内容被发布，谁能证明授权存在”。</h2><div class="reading-steps"><button data-guide="incident"><b>01 · 还原现场</b><small>Q1：沿 06.05 消息确认行动与授权证据</small></button><button data-guide="graph"><b>02 · 看见职责变化</b><small>Q2：比较正常链与事件中的角色分工</small></button><button data-guide="near_miss"><b>03 · 回看历史近失</b><small>Q3：检验 05.29 是否提供了预警</small></button></div></section>
+      <section class="dashboard-block"><div class="dashboard-block-title"><b>群组会话</b><span>2 个活跃空间</span></div><div class="dashboard-conversations">${groups}</div></section>
       <section class="dashboard-block"><div class="dashboard-block-title"><b>最近私聊</b><span>${dmPairs.length} 组真实关系</span></div><div class="dashboard-conversations">${dms}</div></section>
       <section class="dashboard-block"><div class="dashboard-block-title"><b>公开动态</b><span>4 条</span></div><div class="dashboard-posts">${posts}</div></section>`;
     $$("#message-list [data-open-channel]").forEach(b=>b.onclick=()=>openChannel(b.dataset.openChannel));
     $$("#message-list [data-open-pair]").forEach(b=>b.onclick=()=>openDM(b.dataset.openPair));
     $$("#message-list [data-open-post]").forEach(b=>b.onclick=()=>{selectedId=b.dataset.openPost;activeChannel=messageMap.get(selectedId).channel;activeView="posts";renderAll(false)});
+    $$("#message-list [data-guide]").forEach(b=>b.onclick=()=>{if(b.dataset.guide==="incident"){activeCase="incident";activeChannel="all";activeView="group";renderAll(true)}else if(b.dataset.guide==="near_miss"){activeCase="near_miss";openChannel("evidence_graph")}else openChannel("evidence_graph")});
   }
   function renderDmDirectory(){
     $("#message-list").className="message-list dashboard-view";
@@ -234,65 +236,82 @@
     const roleColors={"Legal-Agent":"#d75a3f","Platform-Trust-Agent":"#2e9388","PR-Agent":"#c58a27","Social-Manager-Agent":"#8a68b5","PR-Intern-Agent":"#6d9b56","Intern-Agent":"#4d78a2","Judge-Agent":"#6e6a62"};
     const caseNames={all:"全局协作场",normal:"正常发布链",near_miss:"险情窗口",incident:"有意披露事件"};
     const nodes=list.map((m,i)=>{
-      const ri=Math.max(0,roleOrder.indexOf(m.agent_label)),round=Number(m.round_index)||0,progress=round/22,angle=(ri/roleOrder.length)*Math.PI*2+progress*.82+(i%7)*.012;
-      const radius=1.28+.24*Math.sin(i*.23)+(.2*(m.channel==="official_post"||m.channel==="personal_post"||m.channel==="anonymous_post"?1:0));
-      return {id:m.message_id,kind:"message",message:m,role:m.agent_label,x:Math.cos(angle)*radius,z:Math.sin(angle)*radius,y:(progress-.5)*1.62+(i%5-2)*.028};
+      const ri=Math.max(0,roleOrder.indexOf(m.agent_label)),round=Number(m.round_index)||0,progress=round/22,layer=.55+ri*.15,angle=progress*Math.PI*2*1.18+(i%9)*.018;
+      return {id:m.message_id,kind:"message",message:m,role:m.agent_label,x:Math.cos(angle)*layer,y:Math.sin(angle)*layer,z:(ri-3)*.08+(i%5-2)*.012,layer:ri};
     });
     const nodeMap=new Map(nodes.map(n=>[n.id,n])),edges=nodes.filter(n=>messageMap.has(n.message.responding_to)&&nodeMap.has(n.message.responding_to)).map(n=>({from:nodeMap.get(n.message.responding_to),to:n,role:n.role}));
-    const cores=roleOrder.map((role,i)=>{const a=(i/roleOrder.length)*Math.PI*2;return {id:"role:"+role,kind:"role",role,label:actorDefs[role].zh,x:Math.cos(a)*.76,z:Math.sin(a)*.76,y:Math.sin(a*2)*.12}});
-    const allNodes=[...cores,...nodes],state=graphState={canvas,nodes,edges,cores,allNodes,roleColors,yaw:.48,pitch:.27,zoom:1.02,spread:.04,drag:false,moved:false,lastX:0,lastY:0,playing:false,lastTick:0,stepIndex:0,stepCase:"all",trace:[],rippleStart:performance.now(),introStart:performance.now(),startedAt:performance.now()};
+    const cores=roleOrder.map((role,i)=>{const layer=.55+i*.15,a=(i/roleOrder.length)*Math.PI*2-Math.PI/2;return {id:"role:"+role,kind:"role",role,label:actorDefs[role].zh,x:Math.cos(a)*layer,y:Math.sin(a)*layer,z:(i-3)*.08,layer:i}});
+    const allNodes=[...cores,...nodes],state=graphState={canvas,nodes,edges,cores,allNodes,roleColors,yaw:0,pitch:0,zoom:1.02,spread:1,focusX:0,focusY:0,focusZ:0,drag:false,moved:false,lastX:0,lastY:0,playing:false,playbackDelay:6500,lastTick:0,storyIndex:0,stepCase:"all",trace:[],storyLinks:[],startedAt:performance.now()};
     const host=document.createElement("div");host.className="graph-workbench";
-    host.innerHTML=`<div class="graph-full-head"><div><span class="graph-eyebrow">协作证据场 · 三维回溯</span><h2>消息如何从协作中心扩散成公开动作</h2></div><div class="graph-actions"><button id="graph-exit">‹ 返回工作区</button><button id="graph-play" class="graph-primary">▶ 开始回放</button><button id="graph-trace">显示路径</button><button id="graph-reset">重置镜头</button></div></div>
-      <div class="graph-stage-wrap"><div class="graph-canvas-wrap"></div><div class="graph-overlay"><span id="graph-selection-label">${caseNames[activeCase]||caseNames.all}</span><span id="graph-camera-label">拖拽旋转 · 滚轮缩放</span></div><div class="graph-detail" id="graph-detail"></div><div class="graph-tooltip" id="graph-tooltip" hidden></div></div>
-      <div class="graph-footer"><div class="graph-legend"><b>轨迹颜色</b><span><i class="edge-dot" style="--c:#d75a3f"></i>法务</span><span><i class="edge-dot" style="--c:#2e9388"></i>平台</span><span><i class="edge-dot" style="--c:#8a68b5"></i>社媒</span><span><i class="edge-dot" style="--c:#c58a27"></i>公关</span></div><div class="graph-steps"><button data-graph-case="all" class="${activeCase==="all"?"active":""}">全局</button><button data-graph-case="normal" class="${activeCase==="normal"?"active":""}">06.04 正常发布</button><button data-graph-case="near_miss" class="${activeCase==="near_miss"?"active":""}">05.29 险情</button><button data-graph-case="incident" class="${activeCase==="incident"?"active":""}">06.05 事件</button></div><div class="graph-count"><b>${list.length}</b><span>条消息 · ${edges.length} 条明确回应</span></div></div>`;
+    host.innerHTML=`<div class="graph-full-head"><div><span class="graph-eyebrow">协作证据场 · 三维回溯</span><h2>消息如何从协作中心扩散成公开动作</h2></div><div class="graph-actions"><button id="graph-exit">‹ 返回工作区</button><button id="graph-play" class="graph-primary">▶ 分镜播放</button><button id="graph-speed">速度 6.5s</button><button id="graph-trace">显示路径</button><button id="graph-reset">重置镜头</button></div></div>
+      <div class="graph-stage-wrap"><div class="graph-canvas-wrap"></div><div class="graph-overlay"><span id="graph-selection-label">${caseNames[activeCase]||caseNames.all}</span><span id="graph-camera-label">拖拽旋转 · 滚轮缩放</span></div><div class="graph-story" id="graph-story"></div><div class="graph-detail" id="graph-detail"></div><div class="graph-tooltip" id="graph-tooltip" hidden></div></div>
+      <div class="graph-footer"><div class="graph-legend"><b>轨迹颜色</b><span><i class="edge-dot" style="--c:#d75a3f"></i>法务</span><span><i class="edge-dot" style="--c:#2e9388"></i>平台</span><span><i class="edge-dot" style="--c:#8a68b5"></i>社媒</span><span><i class="edge-dot" style="--c:#c58a27"></i>公关</span><span><i class="edge-dot dashed"></i>分镜顺序</span></div><div class="graph-steps"><button data-graph-case="all" class="${activeCase==="all"?"active":""}">全局</button><button data-graph-case="normal" class="${activeCase==="normal"?"active":""}">06.04 正常发布</button><button data-graph-case="near_miss" class="${activeCase==="near_miss"?"active":""}">05.29 险情</button><button data-graph-case="incident" class="${activeCase==="incident"?"active":""}">06.05 事件</button></div><div class="graph-count"><b>${list.length}</b><span>条消息 · ${edges.length} 条明确回应</span></div></div>`;
     $(".graph-canvas-wrap",host).appendChild(canvas);$("#message-list").className="message-list graph-view";$("#message-list").innerHTML="";$("#message-list").appendChild(host);
     const tooltip=$("#graph-tooltip",host),selectionLabel=$("#graph-selection-label",host),detail=$("#graph-detail",host);
+    const storySteps=[
+      {case:"all",title:"先看全局：七个角色，各自占据一层轨道",body:"这里不是一团随机连线。每一层只放一个角色的消息，跨层连线才表示一次可回查的回应。",messageIds:[]},
+      {case:"normal",title:"06.04 正常发布：职责保持分开",body:"Judge 复核，Legal 授权，PR 通过官方账号执行。三种职责分开，发布链没有绕开门。",messageIds:["20460604_12_009","20460604_12_010","20460604_12_017","20460604_12_018"]},
+      {case:"near_miss",title:"05.29 险情：先越过边界，再被收回",body:"Social 从个人账号发布敏感提示，随后删除并暂停发布。消息被控制了，但发布能力没有被封住。",messageIds:["20460529_08_012","20460529_08_013","20460529_08_014","20460529_08_019","20460529_08_020"]},
+      {case:"incident",title:"06.05 事件：动作是有意的，授权无法独立验证",body:"Legal 发出 GO 并亲自确认合并，但数据里没有独立可核验的发布前书面同意。",messageIds:["20460605_19_009","20460605_21_020","20460605_21_024","20460605_21_026","20460605_21_027","20460605_21_055"]},
+      {case:"all",title:"为什么只看这三段？因为它们构成一条证据链",body:"06.04 是控制组，05.29 是最接近的历史险情，06.05 是赛题事件。三段对照，才能看出日常、近失与失控的差别。",messageIds:[]}
+    ];
     function traceFor(id){const set=new Set(),walk=x=>{let n=0;while(x&&messageMap.has(x)&&n++<18&&!set.has(x)){set.add(x);x=messageMap.get(x).responding_to}};walk(id);nodes.filter(n=>n.message.responding_to===id).slice(0,14).forEach(n=>set.add(n.id));return set}
     function project(p,w,h){
-      const px=p.x*state.spread,py=p.y*state.spread,pz=p.z*state.spread,cy=Math.cos(state.yaw),sy=Math.sin(state.yaw),cp=Math.cos(state.pitch),sp=Math.sin(state.pitch),x=px*cy-pz*sy,z=px*sy+pz*cy,y=py*cp-z*sp,zz=py*sp+z*cp;
+      const px=(p.x-state.focusX)*state.spread,py=(p.y-state.focusY)*state.spread,pz=(p.z-state.focusZ)*state.spread,cy=Math.cos(state.yaw),sy=Math.sin(state.yaw),cp=Math.cos(state.pitch),sp=Math.sin(state.pitch),x=px*cy-pz*sy,z=px*sy+pz*cy,y=py*cp-z*sp,zz=py*sp+z*cp;
       const perspective=1/(1+(zz+1.7)*.3),scale=Math.min(w,h)*.52*state.zoom*perspective;
       return {x:w/2+x*scale,y:h/2-y*scale,z:zz,scale:perspective};
     }
-    function drawRipple(ctx,w,h,now){
-      const elapsed=(now-state.rippleStart)/1000,radius=(elapsed%3.6)/3.6*1.95,alpha=Math.max(0,1-(elapsed%3.6)/3.6);
-      const p0=project({x:0,y:0,z:0},w,h);ctx.beginPath();for(let i=0;i<=90;i++){const a=i/90*Math.PI*2,p=project({x:Math.cos(a)*radius,y:0,z:Math.sin(a)*radius},w,h);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)}ctx.strokeStyle=`rgba(46,147,136,${alpha*.28})`;ctx.lineWidth=2.2;ctx.stroke();ctx.beginPath();ctx.arc(p0.x,p0.y,Math.max(4,8+Math.sin(elapsed*3)*3),0,Math.PI*2);ctx.fillStyle=`rgba(232,93,56,${.16+alpha*.16})`;ctx.fill();
+    function updateStory(){
+      const s=storySteps[state.storyIndex%storySteps.length];
+      $("#graph-story",host).innerHTML=`<div class="story-index">${String(state.storyIndex+1).padStart(2,"0")} / ${String(storySteps.length).padStart(2,"0")}</div><div class="story-copy"><b>${s.title}</b><p>${s.body}</p></div><div class="story-controls"><button id="graph-prev" aria-label="上一段">←</button><button id="graph-next" aria-label="下一段">→</button></div>`;
+      activeCase=s.case;state.stepCase=s.case;selectionLabel.textContent=caseNames[s.case]||caseNames.all;
     }
     function updateDetail(){
-      const m=messageMap.get(selectedId);if(!m){detail.innerHTML="";return}const a=actor(m),trace=traceFor(selectedId);detail.innerHTML=`<span class="detail-kicker">${a.zh} · ${m.channel_label_zh}</span><b>${fmtDate(m.date)} ${fmtTime(m.timestamp)} · 第${Number(m.round_index)+1}轮</b><p>${esc(short(messageText(m)).slice(0,130))}</p><em>${trace.size} 个节点在这条路径上</em>`;
+      const m=messageMap.get(selectedId);if(!m){detail.innerHTML="";return}const a=actor(m),traceSize=state.trace.length||traceFor(selectedId).size;detail.innerHTML=`<span class="detail-kicker">${a.zh} · ${m.channel_label_zh}</span><b>${fmtDate(m.date)} ${fmtTime(m.timestamp)} · 第${Number(m.round_index)+1}轮</b><p>${esc(short(messageText(m)).slice(0,130))}</p><em>${traceSize} 个节点在这条路径上</em>`;
+    }
+    function applyStory(index){
+      state.storyIndex=(index+storySteps.length)%storySteps.length;
+      const s=storySteps[state.storyIndex],ids=(s.messageIds||[]).filter(id=>nodeMap.has(id));
+      if(ids.length){state.focusX=state.focusY=state.focusZ=0;state.zoom=.9;selectedId=ids.at(-1);state.trace=ids;state.storyLinks=ids.slice(1).map((id,i)=>({from:nodeMap.get(ids[i]),to:nodeMap.get(id)}));renderSelection()}else{state.focusX=state.focusY=state.focusZ=0;state.zoom=1.02;selectedId="";state.trace=[];state.storyLinks=[];renderSelection()}
+      updateStory();updateDetail();
     }
     function nextPlayback(now){
       if(!state.playing)return;
-      const cases=["normal","near_miss","incident"],active=cases[state.stepIndex%cases.length],candidates=messages.filter(m=>caseDates[active]?.has(m.date)&&(publicChannels.has(m.channel)||messageMap.has(m.responding_to)));
-      if(candidates.length){const m=candidates[(state.stepIndex*7)%candidates.length];selectedId=m.message_id;state.trace=[...traceFor(selectedId)];state.stepIndex++;state.stepCase=active;state.rippleStart=now;renderSelection();updateDetail()}
+      applyStory(state.storyIndex+1);
       state.lastTick=now;
     }
+    function scheduleDraw(){if(!graphFrame)graphFrame=requestAnimationFrame(draw)}
     function draw(now=0){
+      graphFrame=0;
       const rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(1,rect.width),h=Math.max(1,rect.height);
       if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr)}
       const ctx=canvas.getContext("2d");ctx.setTransform(dpr,0,0,dpr,0,0);
       const bg=ctx.createRadialGradient(w*.5,h*.47,0,w*.5,h*.47,Math.max(w,h)*.7);bg.addColorStop(0,"#fffdf8");bg.addColorStop(.5,"#edf2ec");bg.addColorStop(1,"#dfe8e1");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
-      const intro=Math.min(1,(now-state.introStart)/2600);state.spread=1-Math.pow(1-intro,3);
-      if(state.playing){const elapsed=now-state.startedAt;state.yaw=.48+Math.sin(elapsed*.00018)*.22;state.pitch=.27+Math.sin(elapsed*.00013)*.07;state.zoom=1.02+Math.sin(elapsed*.00016)*.08;if(now-state.lastTick>6500)nextPlayback(now)}
+      if(state.playing){const elapsed=now-state.startedAt;state.yaw=Math.sin(elapsed*.00012)*.13;state.pitch=Math.sin(elapsed*.00009)*.025;state.zoom=1.02+Math.sin(elapsed*.0001)*.04;if(now-state.lastTick>state.playbackDelay)nextPlayback(now)}
       const trace=state.trace.length?new Set(state.trace):traceFor(selectedId);state.trace=[...trace];
-      [0.52,.88,1.24,1.58].forEach((radius,idx)=>{ctx.beginPath();for(let i=0;i<=96;i++){const a=i/96*Math.PI*2,p=project({x:Math.cos(a)*radius,y:(idx-1.5)*.33,z:Math.sin(a)*radius},w,h);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)}ctx.strokeStyle=idx===2?"rgba(46,147,136,.26)":"rgba(92,103,93,.13)";ctx.lineWidth=idx===2?1.7:1;ctx.stroke()});
-      drawRipple(ctx,w,h,now);
-      edges.forEach(e=>{const a=project(e.from,w,h),b=project(e.to,w,h),hot=trace.has(e.from.id)||trace.has(e.to.id),publicEdge=publicChannels.has(e.to.message.channel);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=hot?(publicEdge?"#e85d38e8":`${state.roleColors[e.role]}e0`):(publicEdge?"#e85d3840":`${state.roleColors[e.role]}22`);ctx.lineWidth=hot?(publicEdge?3:2):.7;ctx.stroke()});
+      roleOrder.forEach((role,idx)=>{const radius=.55+idx*.15,z=(idx-3)*.08;ctx.beginPath();for(let i=0;i<=96;i++){const a=i/96*Math.PI*2,p=project({x:Math.cos(a)*radius,y:Math.sin(a)*radius,z},w,h);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)}ctx.strokeStyle=`${state.roleColors[role]}32`;ctx.lineWidth=idx%2?1:1.5;ctx.stroke()});
+      edges.forEach(e=>{const a=project(e.from,w,h),b=project(e.to,w,h),hot=trace.has(e.from.id)&&trace.has(e.to.id),cross=e.from.role!==e.to.role,publicEdge=publicChannels.has(e.to.message.channel);if(!hot&&!cross)return;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=hot?(publicEdge?"#e85d38ef":`${state.roleColors[e.role]}ef`):(publicEdge?"#e85d3820":`${state.roleColors[e.role]}18`);ctx.lineWidth=hot?(publicEdge?3.6:2.8):.7;ctx.stroke()});
+      if(state.storyLinks.length){ctx.save();ctx.setLineDash([6,5]);state.storyLinks.forEach((e,i)=>{const a=project(e.from,w,h),b=project(e.to,w,h);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=i===state.storyLinks.length-1?"#e85d38":"#263a34";ctx.lineWidth=2.6;ctx.stroke()});ctx.restore()}
       const projected=allNodes.map(n=>({n,p:project(n,w,h)})).sort((a,b)=>a.p.z-b.p.z);
-      projected.forEach(({n,p})=>{const hot=n.kind==="role"||trace.has(n.id)||n.id===selectedId,color=state.roleColors[n.role]||"#77746c";if(n.kind==="message"&&p.scale<.38)return;const r=n.kind==="role"?16:Math.max(1.7,3.1*p.scale)+(hot?3:0);ctx.globalAlpha=n.kind==="role"?.98:(hot?.94:.57);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(hot){ctx.beginPath();ctx.arc(p.x,p.y,r+8,0,Math.PI*2);ctx.strokeStyle=`${color}66`;ctx.lineWidth=1.2;ctx.stroke()}if(n.kind==="role"){ctx.font="600 12px IBM Plex Sans Condensed,Microsoft YaHei,sans-serif";ctx.fillStyle="#252723";ctx.fillText(n.label,p.x+19,p.y+4)}});ctx.globalAlpha=1;
-      selectionLabel.textContent=state.playing?`${caseNames[state.stepCase]||caseNames.all} · 镜头回放中`:(caseNames[activeCase]||caseNames.all);updateDetail();graphFrame=requestAnimationFrame(draw);
+      projected.forEach(({n,p})=>{const hot=n.kind==="role"||trace.has(n.id)||n.id===selectedId,color=state.roleColors[n.role]||"#77746c";if(n.kind==="message"&&p.scale<.38)return;const r=n.kind==="role"?12:Math.max(1.7,3.1*p.scale)+(hot?6:0);ctx.globalAlpha=n.kind==="role"?.98:(hot?.98:.22);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(hot){ctx.beginPath();ctx.arc(p.x,p.y,r+9,0,Math.PI*2);ctx.strokeStyle=`${color}8a`;ctx.lineWidth=1.8;ctx.stroke()}if(n.kind==="role"){const right=n.x>=0;ctx.font="600 10px IBM Plex Sans Condensed,Microsoft YaHei,sans-serif";ctx.fillStyle="#252723";ctx.textAlign=right?"left":"right";ctx.fillText(n.label,p.x+(right?15:-15),p.y+3);ctx.textAlign="left"}});ctx.globalAlpha=1;
+      selectionLabel.textContent=state.playing?`${caseNames[state.stepCase]||caseNames.all} · 分镜播放中`:(caseNames[activeCase]||caseNames.all);if(state.playing)graphFrame=requestAnimationFrame(draw);
     }
     canvas.addEventListener("pointerdown",e=>{state.drag=true;state.moved=false;state.lastX=e.clientX;state.lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
-    canvas.addEventListener("pointermove",e=>{if(!state.drag)return;const dx=e.clientX-state.lastX,dy=e.clientY-state.lastY;state.moved|=Math.abs(dx)+Math.abs(dy)>2;state.yaw+=dx*.006;state.pitch=Math.max(-.8,Math.min(.8,state.pitch+dy*.005));state.lastX=e.clientX;state.lastY=e.clientY});
+    canvas.addEventListener("pointermove",e=>{if(!state.drag)return;const dx=e.clientX-state.lastX,dy=e.clientY-state.lastY;state.moved|=Math.abs(dx)+Math.abs(dy)>2;state.yaw+=dx*.006;state.pitch=Math.max(-.8,Math.min(.8,state.pitch+dy*.005));state.lastX=e.clientX;state.lastY=e.clientY;scheduleDraw()});
     canvas.addEventListener("pointerup",e=>{state.drag=false;canvas.releasePointerCapture?.(e.pointerId)});
-    canvas.addEventListener("wheel",e=>{e.preventDefault();state.zoom=Math.max(.65,Math.min(1.55,state.zoom*(e.deltaY>0?.93:1.07)))},{passive:false});
+    canvas.addEventListener("wheel",e=>{e.preventDefault();state.zoom=Math.max(.65,Math.min(1.55,state.zoom*(e.deltaY>0?.93:1.07)));scheduleDraw()},{passive:false});
     canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=18;nodes.forEach(n=>{const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best={n,p};dist=d}});if(best){tooltip.hidden=false;tooltip.style.left=`${best.p.x+16}px`;tooltip.style.top=`${best.p.y+12}px`;tooltip.innerHTML=`<b>${actor(best.n.message).zh}</b><span>${fmtDate(best.n.message.date)} ${fmtTime(best.n.message.timestamp)}</span><p>${esc(short(messageText(best.n.message)).slice(0,98))}</p>`}else tooltip.hidden=true});
-    canvas.addEventListener("click",e=>{if(state.moved)return;const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=20;nodes.forEach(n=>{const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best=n;dist=d}});if(best){selectedId=best.id;state.trace=[...traceFor(selectedId)];state.rippleStart=performance.now();renderSelection();updateDetail()}});
-    $("#graph-play",host).onclick=()=>{state.playing=!state.playing;state.startedAt=performance.now();state.lastTick=state.startedAt;$("#graph-play",host).textContent=state.playing?"Ⅱ 暂停回放":"▶ 开始回放"};
-    $("#graph-trace",host).onclick=()=>{state.trace=state.trace.length?[]:[...traceFor(selectedId)]};
-    $("#graph-reset",host).onclick=()=>{state.yaw=.48;state.pitch=.27;state.zoom=1.02};
+    canvas.addEventListener("click",e=>{if(state.moved)return;const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=20;nodes.forEach(n=>{const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best=n;dist=d}});if(best){selectedId=best.id;state.trace=[...traceFor(selectedId)];state.storyLinks=[];renderSelection();updateDetail();scheduleDraw()}});
+    $("#graph-play",host).onclick=()=>{state.playing=!state.playing;state.startedAt=performance.now();state.lastTick=state.startedAt;$("#graph-play",host).textContent=state.playing?"Ⅱ 暂停分镜":"▶ 分镜播放";scheduleDraw()};
+    $("#graph-speed",host).onclick=e=>{const speeds=[9000,6500,4000],i=(speeds.indexOf(state.playbackDelay)+1)%speeds.length;state.playbackDelay=speeds[i];e.currentTarget.textContent=`速度 ${state.playbackDelay/1000}s`};
+    $("#graph-trace",host).onclick=()=>{state.trace=state.trace.length?[]:[...traceFor(selectedId)];scheduleDraw()};
+    $("#graph-reset",host).onclick=()=>{state.yaw=0;state.pitch=0;state.zoom=1.02;state.focusX=state.focusY=state.focusZ=0;scheduleDraw()};
     $("#graph-exit",host).onclick=()=>{activeChannel="dashboard";activeView="dashboard";activeCase="all";renderAll(true)};
     $$(".graph-steps button",host).forEach(b=>b.onclick=()=>{activeCase=b.dataset.graphCase;renderAll(false)});
-    updateDetail();draw(performance.now());
+    applyStory(({all:0,normal:1,near_miss:2,incident:3})[activeCase]??0);
+    $("#graph-prev",host).onclick=()=>{state.playing=false;$("#graph-play",host).textContent="▶ 分镜播放";applyStory(state.storyIndex-1);scheduleDraw()};
+    $("#graph-next",host).onclick=()=>{state.playing=false;$("#graph-play",host).textContent="▶ 分镜播放";applyStory(state.storyIndex+1);scheduleDraw()};
+    draw(performance.now());
   }
   function renderAll(resetScroll=true){
     buildSidebar();renderHeader();
