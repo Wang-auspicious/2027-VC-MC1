@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>开放 · 协作工作区</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="workspace-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <span class="brand-mark">O/</span>
+        <div><strong>开放</strong><small></small></div>
+      </div>
+      <div class="top-context">
+        <span class="live-dot"></span><span>现场记录</span>
+        <b id="top-visible">912</b><span>条消息</span>
+      </div>
+      <div class="top-actions">
+        <button id="density-toggle" title="切换消息密度">密度 <b>舒适</b></button>
+        <button id="clear-filters">清除筛选</button>
+      </div>
+    </header>
+
+    <div class="workspace-grid">
+      <aside class="left-sidebar">
+        <div class="sidebar-section">
+          <div class="section-heading"><span>频道</span><button id="new-channel">＋</button></div>
+          <nav id="channel-list" class="channel-list"></nav>
+        </div>
+        <details class="sidebar-section dm-collapsed">
+          <summary><span>直接消息</span><span class="summary-chevron">⌄</span></summary>
+          <nav id="dm-list" class="dm-list"></nav>
+        </details>
+        <div class="sidebar-section people-section">
+          <div class="section-heading"><span>工作区成员</span><b id="online-count">7</b></div>
+          <div id="people-list" class="people-list"></div>
+        </div>
+        <footer class="sidebar-footer"><span class="status-square"></span><span>数据已载入</span><code>MC1_FINAL</code></footer>
+      </aside>
+
+      <section class="conversation-panel">
+        <header class="conversation-header">
+          <div class="channel-title">
+            <button id="back-dashboard" class="back-dashboard" hidden aria-label="返回仪表盘">‹</button>
+            <span class="hash" id="current-channel-symbol">#</span>
+            <div><h1 id="current-channel-name">协作群聊</h1><p id="current-channel-description"></p></div>
+          </div>
+          <div class="conversation-tools">
+            <button id="channel-info">ⓘ <span>频道信息</span></button>
+            <button id="search-focus">⌕ <span>搜索</span></button>
+          </div>
+        </header>
+        <div class="filter-strip">
+          <div class="case-tabs" id="case-tabs">
+            <button class="active" data-case="all">全部时间</button>
+            <button data-case="normal">06.04 / 正常发布</button>
+            <button data-case="near_miss">05.29 / 险情</button>
+            <button data-case="incident">06.05 / 事件</button>
+          </div>
+          <label class="search-box"><span>⌕</span><input id="message-search" placeholder="搜索消息、代理或消息 ID" autocomplete="off"><kbd>/</kbd></label>
+        </div>
+        <div class="message-stage" id="message-stage">
+          <div class="stage-note"><span class="signal-line"></span><span id="stage-note-text">消息按真实时间顺序呈现。点击任意一条，查看它在协作链中的位置。</span></div>
+          <div id="message-list" class="message-list"></div>
+          <div id="empty-state" class="empty-state" hidden>没有符合条件的消息。<button id="empty-clear">清除筛选</button></div>
+        </div>
+        <footer class="composer">
+          <span class="composer-plus">＋</span>
+          <div class="composer-copy"><span>只读审阅</span><small></small></div>
+          <span class="composer-key">⌘ K</span>
+        </footer>
+      </section>
+
+      <aside class="right-inspector">
+        <section class="inspector-card selected-card" id="selected-card">
+          <div class="inspector-label"><span>当前选中</span><button id="close-selection">×</button></div>
+          <div id="selection-content" class="selection-content">
+            <div class="selection-empty"><span class="empty-cross">＋</span><p>点击一条消息<br>在这里查看完整上下文</p></div>
+          </div>
+        </section>
+        <section class="inspector-card structure-card">
+          <div class="inspector-label"><span>当前范围</span><span id="structure-scope">全局</span></div>
+          <div id="structure-list" class="structure-list"></div>
+        </section>
+        <section class="inspector-card window-card">
+          <div class="inspector-label"><span>关键窗口</span><span>快速定位</span></div>
+          <button data-window="near_miss"><b>05.29</b><span>已控制的险情</span><em>→</em></button>
+          <button data-window="normal"><b>06.04</b><span>正常发布链</span><em>→</em></button>
+          <button data-window="incident"><b>06.05</b><span>有意披露事件</span><em>→</em></button>
+        </section>
+      </aside>
+    </div>
+  </main>
+  <div class="profile-modal" id="profile-modal" hidden>
+    <button class="profile-scrim" data-close-profile aria-label="关闭"></button>
+    <section class="profile-card" id="profile-card">
+      <button class="profile-close" data-close-profile aria-label="关闭">×</button>
+      <div id="profile-body"></div>
+    </section>
+  </div>
+  <script src="../interlock_app/data/interlock-data.js"></script>
+  <script>window.INTERLOCK_EN=window.INTERLOCK_DATA;</script>
+  <script src="../review_cn/data/interlock-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

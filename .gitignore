@@ -1,0 +1,21 @@
+# Local runtime and generated caches
+.pytest_cache/
+.pytest-tmp-*/
+__pycache__/
+.codex/
+.agents/
+.omx/
+.superpowers/
+.learnings/
+
+# Temporary and intermediate output
+outputs/
+artifacts/
+archive/
+visual_prototype_v1/
+visual_prototype_v1_cn/
+docs/
+
+# Keep the current Chinese workspace and the source data it loads
+*.log
+Thumbs.db
