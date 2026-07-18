@@ -229,62 +229,70 @@
   }
   function renderGraph(){
     cancelAnimationFrame(graphFrame);
-    const list=scopeMessages(),canvas=document.createElement("canvas");
+    const list=scopeMessages(),canvas=document.createElement("canvas"),roleOrder=Object.keys(actorDefs);
     canvas.className="evidence-canvas";
-    const roleOrder=Object.keys(actorDefs);
     const roleColors={"Legal-Agent":"#d75a3f","Platform-Trust-Agent":"#2e9388","PR-Agent":"#c58a27","Social-Manager-Agent":"#8a68b5","PR-Intern-Agent":"#6d9b56","Intern-Agent":"#4d78a2","Judge-Agent":"#6e6a62"};
+    const caseNames={all:"全局协作场",normal:"正常发布链",near_miss:"险情窗口",incident:"有意披露事件"};
     const nodes=list.map((m,i)=>{
-      const ri=Math.max(0,roleOrder.indexOf(m.agent_label)),round=Number(m.round_index)||0;
-      const angle=(ri/roleOrder.length)*Math.PI*2+(round%5)*.08;
-      const radius=.64+.14*Math.sin(i*.37);
-      return {id:m.message_id,kind:"message",message:m,role:m.agent_label,x:Math.cos(angle)*radius,z:Math.sin(angle)*radius,y:(round/22-.5)*1.55+(i%3-.9)*.035};
+      const ri=Math.max(0,roleOrder.indexOf(m.agent_label)),round=Number(m.round_index)||0,progress=round/22,angle=(ri/roleOrder.length)*Math.PI*2+progress*.82+(i%7)*.012;
+      const radius=1.28+.24*Math.sin(i*.23)+(.2*(m.channel==="official_post"||m.channel==="personal_post"||m.channel==="anonymous_post"?1:0));
+      return {id:m.message_id,kind:"message",message:m,role:m.agent_label,x:Math.cos(angle)*radius,z:Math.sin(angle)*radius,y:(progress-.5)*1.62+(i%5-2)*.028};
     });
-    const nodeMap=new Map(nodes.map(n=>[n.id,n]));
-    const edges=nodes.filter(n=>messageMap.has(n.message.responding_to)&&nodeMap.has(n.message.responding_to)).map(n=>({from:nodeMap.get(n.message.responding_to),to:n,role:n.role}));
-    const cores=roleOrder.map((role,i)=>{const a=(i/roleOrder.length)*Math.PI*2;return {id:"role:"+role,kind:"role",role,label:actorDefs[role].zh,x:Math.cos(a)*.28,z:Math.sin(a)*.28,y:-.02}});
-    const allNodes=[...cores,...nodes];
-    const state=graphState={canvas,nodes,edges,cores,allNodes,roleColors,yaw:.58,pitch:.22,zoom:1,drag:false,moved:false,lastX:0,lastY:0,playing:false,lastTick:0,traceIndex:0,trace:[]};
-    const host=document.createElement("div");
-    host.className="graph-workbench";
-    host.innerHTML=`<div class="graph-topline"><div><span class="graph-eyebrow">协作证据场</span><h2>消息如何变成一次公开动作</h2></div><div class="graph-actions"><button id="graph-play" class="graph-primary">▶ 自动回放</button><button id="graph-trace">追踪选中</button><button id="graph-reset">重置视角</button></div></div>
-      <div class="graph-stage-wrap"><div class="graph-canvas-wrap"></div><div class="graph-overlay"><span id="graph-selection-label">全局视图</span><span id="graph-camera-label">拖拽旋转 · 滚轮缩放</span></div><div class="graph-tooltip" id="graph-tooltip" hidden></div></div>
-      <div class="graph-bottom"><div class="graph-legend"><b>边线语义</b><span><i class="edge-dot" style="--c:#d75a3f"></i>发起者角色</span><span><i class="edge-dot" style="--c:#e85d38"></i>公开动作</span><span><i class="edge-dot dashed"></i>推断关系</span></div><div class="graph-steps"><button data-graph-case="all" class="active">全局</button><button data-graph-case="normal">06.04 正常发布</button><button data-graph-case="near_miss">05.29 险情</button><button data-graph-case="incident">06.05 事件</button></div><div class="graph-count"><b>${list.length}</b><span>条消息 · ${edges.length} 条可回查回应</span></div></div>`;
-    const wrap=$(".graph-canvas-wrap",host);wrap.appendChild(canvas);
-    $("#message-list").className="message-list graph-view";$("#message-list").innerHTML="";$("#message-list").appendChild(host);
-    const tooltip=$("#graph-tooltip",host),selectionLabel=$("#graph-selection-label",host);
-    function traceFor(id){const set=new Set(),walk=x=>{let n=0;while(x&&messageMap.has(x)&&n++<14&&!set.has(x)){set.add(x);x=messageMap.get(x).responding_to}};walk(id);nodes.filter(n=>n.message.responding_to===id).slice(0,8).forEach(n=>set.add(n.id));return set}
+    const nodeMap=new Map(nodes.map(n=>[n.id,n])),edges=nodes.filter(n=>messageMap.has(n.message.responding_to)&&nodeMap.has(n.message.responding_to)).map(n=>({from:nodeMap.get(n.message.responding_to),to:n,role:n.role}));
+    const cores=roleOrder.map((role,i)=>{const a=(i/roleOrder.length)*Math.PI*2;return {id:"role:"+role,kind:"role",role,label:actorDefs[role].zh,x:Math.cos(a)*.76,z:Math.sin(a)*.76,y:Math.sin(a*2)*.12}});
+    const allNodes=[...cores,...nodes],state=graphState={canvas,nodes,edges,cores,allNodes,roleColors,yaw:.48,pitch:.27,zoom:1.02,spread:.04,drag:false,moved:false,lastX:0,lastY:0,playing:false,lastTick:0,stepIndex:0,stepCase:"all",trace:[],rippleStart:performance.now(),introStart:performance.now(),startedAt:performance.now()};
+    const host=document.createElement("div");host.className="graph-workbench";
+    host.innerHTML=`<div class="graph-full-head"><div><span class="graph-eyebrow">协作证据场 · 三维回溯</span><h2>消息如何从协作中心扩散成公开动作</h2></div><div class="graph-actions"><button id="graph-exit">‹ 返回工作区</button><button id="graph-play" class="graph-primary">▶ 开始回放</button><button id="graph-trace">显示路径</button><button id="graph-reset">重置镜头</button></div></div>
+      <div class="graph-stage-wrap"><div class="graph-canvas-wrap"></div><div class="graph-overlay"><span id="graph-selection-label">${caseNames[activeCase]||caseNames.all}</span><span id="graph-camera-label">拖拽旋转 · 滚轮缩放</span></div><div class="graph-detail" id="graph-detail"></div><div class="graph-tooltip" id="graph-tooltip" hidden></div></div>
+      <div class="graph-footer"><div class="graph-legend"><b>轨迹颜色</b><span><i class="edge-dot" style="--c:#d75a3f"></i>法务</span><span><i class="edge-dot" style="--c:#2e9388"></i>平台</span><span><i class="edge-dot" style="--c:#8a68b5"></i>社媒</span><span><i class="edge-dot" style="--c:#c58a27"></i>公关</span></div><div class="graph-steps"><button data-graph-case="all" class="${activeCase==="all"?"active":""}">全局</button><button data-graph-case="normal" class="${activeCase==="normal"?"active":""}">06.04 正常发布</button><button data-graph-case="near_miss" class="${activeCase==="near_miss"?"active":""}">05.29 险情</button><button data-graph-case="incident" class="${activeCase==="incident"?"active":""}">06.05 事件</button></div><div class="graph-count"><b>${list.length}</b><span>条消息 · ${edges.length} 条明确回应</span></div></div>`;
+    $(".graph-canvas-wrap",host).appendChild(canvas);$("#message-list").className="message-list graph-view";$("#message-list").innerHTML="";$("#message-list").appendChild(host);
+    const tooltip=$("#graph-tooltip",host),selectionLabel=$("#graph-selection-label",host),detail=$("#graph-detail",host);
+    function traceFor(id){const set=new Set(),walk=x=>{let n=0;while(x&&messageMap.has(x)&&n++<18&&!set.has(x)){set.add(x);x=messageMap.get(x).responding_to}};walk(id);nodes.filter(n=>n.message.responding_to===id).slice(0,14).forEach(n=>set.add(n.id));return set}
     function project(p,w,h){
-      const cy=Math.cos(state.yaw),sy=Math.sin(state.yaw),cp=Math.cos(state.pitch),sp=Math.sin(state.pitch);
-      const x=p.x*cy-p.z*sy,z=p.x*sy+p.z*cy,y=p.y*cp-z*sp,zz=p.y*sp+z*cp;
-      const perspective=1/(1+(zz+1.5)*.34),scale=215*state.zoom*perspective;
+      const px=p.x*state.spread,py=p.y*state.spread,pz=p.z*state.spread,cy=Math.cos(state.yaw),sy=Math.sin(state.yaw),cp=Math.cos(state.pitch),sp=Math.sin(state.pitch),x=px*cy-pz*sy,z=px*sy+pz*cy,y=py*cp-z*sp,zz=py*sp+z*cp;
+      const perspective=1/(1+(zz+1.7)*.3),scale=Math.min(w,h)*.52*state.zoom*perspective;
       return {x:w/2+x*scale,y:h/2-y*scale,z:zz,scale:perspective};
+    }
+    function drawRipple(ctx,w,h,now){
+      const elapsed=(now-state.rippleStart)/1000,radius=(elapsed%3.6)/3.6*1.95,alpha=Math.max(0,1-(elapsed%3.6)/3.6);
+      const p0=project({x:0,y:0,z:0},w,h);ctx.beginPath();for(let i=0;i<=90;i++){const a=i/90*Math.PI*2,p=project({x:Math.cos(a)*radius,y:0,z:Math.sin(a)*radius},w,h);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)}ctx.strokeStyle=`rgba(46,147,136,${alpha*.28})`;ctx.lineWidth=2.2;ctx.stroke();ctx.beginPath();ctx.arc(p0.x,p0.y,Math.max(4,8+Math.sin(elapsed*3)*3),0,Math.PI*2);ctx.fillStyle=`rgba(232,93,56,${.16+alpha*.16})`;ctx.fill();
+    }
+    function updateDetail(){
+      const m=messageMap.get(selectedId);if(!m){detail.innerHTML="";return}const a=actor(m),trace=traceFor(selectedId);detail.innerHTML=`<span class="detail-kicker">${a.zh} · ${m.channel_label_zh}</span><b>${fmtDate(m.date)} ${fmtTime(m.timestamp)} · 第${Number(m.round_index)+1}轮</b><p>${esc(short(messageText(m)).slice(0,130))}</p><em>${trace.size} 个节点在这条路径上</em>`;
+    }
+    function nextPlayback(now){
+      if(!state.playing)return;
+      const cases=["normal","near_miss","incident"],active=cases[state.stepIndex%cases.length],candidates=messages.filter(m=>caseDates[active]?.has(m.date)&&(publicChannels.has(m.channel)||messageMap.has(m.responding_to)));
+      if(candidates.length){const m=candidates[(state.stepIndex*7)%candidates.length];selectedId=m.message_id;state.trace=[...traceFor(selectedId)];state.stepIndex++;state.stepCase=active;state.rippleStart=now;renderSelection();updateDetail()}
+      state.lastTick=now;
     }
     function draw(now=0){
       const rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(1,rect.width),h=Math.max(1,rect.height);
       if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr)}
       const ctx=canvas.getContext("2d");ctx.setTransform(dpr,0,0,dpr,0,0);
-      const bg=ctx.createLinearGradient(0,0,w,h);bg.addColorStop(0,"#f8f5ee");bg.addColorStop(1,"#e9efe8");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+      const bg=ctx.createRadialGradient(w*.5,h*.47,0,w*.5,h*.47,Math.max(w,h)*.7);bg.addColorStop(0,"#fffdf8");bg.addColorStop(.5,"#edf2ec");bg.addColorStop(1,"#dfe8e1");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+      const intro=Math.min(1,(now-state.introStart)/2600);state.spread=1-Math.pow(1-intro,3);
+      if(state.playing){const elapsed=now-state.startedAt;state.yaw=.48+Math.sin(elapsed*.00018)*.22;state.pitch=.27+Math.sin(elapsed*.00013)*.07;state.zoom=1.02+Math.sin(elapsed*.00016)*.08;if(now-state.lastTick>6500)nextPlayback(now)}
       const trace=state.trace.length?new Set(state.trace):traceFor(selectedId);state.trace=[...trace];
-      if(state.playing&&now-state.lastTick>1450){const candidates=list.filter(m=>publicChannels.has(m.channel)||messageMap.has(m.responding_to));if(candidates.length){const m=candidates[state.traceIndex%candidates.length];selectedId=m.message_id;state.traceIndex++;state.lastTick=now;renderSelection();state.trace=[...traceFor(selectedId)]}}
-      const ringLevels=[-.58,-.2,.18,.56];ringLevels.forEach((y,idx)=>{ctx.beginPath();for(let i=0;i<=72;i++){const a=i/72*Math.PI*2;const p=project({x:Math.cos(a)*(.78-.05*idx),y,z:Math.sin(a)*(.78-.05*idx)},w,h);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)}ctx.strokeStyle=idx===2?"rgba(46,147,136,.22)":"rgba(90,91,82,.14)";ctx.lineWidth=idx===2?1.5:1;ctx.stroke()});
-      edges.forEach(e=>{const a=project(e.from,w,h),b=project(e.to,w,h),hot=trace.has(e.from.id)||trace.has(e.to.id);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=hot?`${state.roleColors[e.role]}b8`:`${state.roleColors[e.role]}28`;ctx.lineWidth=hot?2.1:0.7;ctx.stroke()});
+      [0.52,.88,1.24,1.58].forEach((radius,idx)=>{ctx.beginPath();for(let i=0;i<=96;i++){const a=i/96*Math.PI*2,p=project({x:Math.cos(a)*radius,y:(idx-1.5)*.33,z:Math.sin(a)*radius},w,h);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)}ctx.strokeStyle=idx===2?"rgba(46,147,136,.26)":"rgba(92,103,93,.13)";ctx.lineWidth=idx===2?1.7:1;ctx.stroke()});
+      drawRipple(ctx,w,h,now);
+      edges.forEach(e=>{const a=project(e.from,w,h),b=project(e.to,w,h),hot=trace.has(e.from.id)||trace.has(e.to.id),publicEdge=publicChannels.has(e.to.message.channel);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=hot?(publicEdge?"#e85d38e8":`${state.roleColors[e.role]}e0`):(publicEdge?"#e85d3840":`${state.roleColors[e.role]}22`);ctx.lineWidth=hot?(publicEdge?3:2):.7;ctx.stroke()});
       const projected=allNodes.map(n=>({n,p:project(n,w,h)})).sort((a,b)=>a.p.z-b.p.z);
-      projected.forEach(({n,p})=>{const hot=n.kind==="role"||trace.has(n.id)||n.id===selectedId;const color=n.kind==="role"?state.roleColors[n.role]:state.roleColors[n.role]||"#777";const r=n.kind==="role"?11:Math.max(1.5,2.2*p.scale)+(hot?2.2:0);ctx.globalAlpha=n.kind==="role"?.98:(hot?.96:.52);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(hot){ctx.beginPath();ctx.arc(p.x,p.y,r+5,0,Math.PI*2);ctx.strokeStyle=`${color}66`;ctx.lineWidth=1;ctx.stroke()}if(n.kind==="role"){ctx.font="600 11px var(--sans)";ctx.fillStyle="#2a2925";ctx.fillText(n.label,p.x+14,p.y+4)}});ctx.globalAlpha=1;
-      selectionLabel.textContent=selectedId&&messageMap.has(selectedId)?`${actor(messageMap.get(selectedId)).zh} · ${fmtDate(messageMap.get(selectedId).date)} ${fmtTime(messageMap.get(selectedId).timestamp)}`:"全局视图";
-      graphFrame=requestAnimationFrame(draw);
+      projected.forEach(({n,p})=>{const hot=n.kind==="role"||trace.has(n.id)||n.id===selectedId,color=state.roleColors[n.role]||"#77746c";if(n.kind==="message"&&p.scale<.38)return;const r=n.kind==="role"?16:Math.max(1.7,3.1*p.scale)+(hot?3:0);ctx.globalAlpha=n.kind==="role"?.98:(hot?.94:.57);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(hot){ctx.beginPath();ctx.arc(p.x,p.y,r+8,0,Math.PI*2);ctx.strokeStyle=`${color}66`;ctx.lineWidth=1.2;ctx.stroke()}if(n.kind==="role"){ctx.font="600 12px IBM Plex Sans Condensed,Microsoft YaHei,sans-serif";ctx.fillStyle="#252723";ctx.fillText(n.label,p.x+19,p.y+4)}});ctx.globalAlpha=1;
+      selectionLabel.textContent=state.playing?`${caseNames[state.stepCase]||caseNames.all} · 镜头回放中`:(caseNames[activeCase]||caseNames.all);updateDetail();graphFrame=requestAnimationFrame(draw);
     }
-    function resize(){draw(performance.now())} addEventListener("resize",resize,{once:true});
     canvas.addEventListener("pointerdown",e=>{state.drag=true;state.moved=false;state.lastX=e.clientX;state.lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
-    canvas.addEventListener("pointermove",e=>{if(!state.drag)return;const dx=e.clientX-state.lastX,dy=e.clientY-state.lastY;state.moved|=Math.abs(dx)+Math.abs(dy)>2;state.yaw+=dx*.008;state.pitch=Math.max(-.8,Math.min(.8,state.pitch+dy*.006));state.lastX=e.clientX;state.lastY=e.clientY});
+    canvas.addEventListener("pointermove",e=>{if(!state.drag)return;const dx=e.clientX-state.lastX,dy=e.clientY-state.lastY;state.moved|=Math.abs(dx)+Math.abs(dy)>2;state.yaw+=dx*.006;state.pitch=Math.max(-.8,Math.min(.8,state.pitch+dy*.005));state.lastX=e.clientX;state.lastY=e.clientY});
     canvas.addEventListener("pointerup",e=>{state.drag=false;canvas.releasePointerCapture?.(e.pointerId)});
-    canvas.addEventListener("wheel",e=>{e.preventDefault();state.zoom=Math.max(.62,Math.min(1.65,state.zoom*(e.deltaY>0?.92:1.08)))},{passive:false});
-    canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=14;allNodes.forEach(n=>{const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best={n,p};dist=d}});if(best&&best.n.kind==="message"){tooltip.hidden=false;tooltip.style.left=`${best.p.x+14}px`;tooltip.style.top=`${best.p.y+10}px`;tooltip.innerHTML=`<b>${actor(best.n.message).zh}</b><span>${fmtDate(best.n.message.date)} ${fmtTime(best.n.message.timestamp)}</span><p>${esc(short(messageText(best.n.message)).slice(0,92))}</p>`}else tooltip.hidden=true});
-    canvas.addEventListener("click",e=>{if(state.moved)return;const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=16;allNodes.forEach(n=>{if(n.kind!=="message")return;const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best=n;dist=d}});if(best){selectedId=best.id;state.trace=[...traceFor(selectedId)];renderSelection()}});
-    $("#graph-play",host).onclick=()=>{state.playing=!state.playing;state.lastTick=performance.now();$("#graph-play",host).textContent=state.playing?"Ⅱ 暂停回放":"▶ 自动回放"};
+    canvas.addEventListener("wheel",e=>{e.preventDefault();state.zoom=Math.max(.65,Math.min(1.55,state.zoom*(e.deltaY>0?.93:1.07)))},{passive:false});
+    canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=18;nodes.forEach(n=>{const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best={n,p};dist=d}});if(best){tooltip.hidden=false;tooltip.style.left=`${best.p.x+16}px`;tooltip.style.top=`${best.p.y+12}px`;tooltip.innerHTML=`<b>${actor(best.n.message).zh}</b><span>${fmtDate(best.n.message.date)} ${fmtTime(best.n.message.timestamp)}</span><p>${esc(short(messageText(best.n.message)).slice(0,98))}</p>`}else tooltip.hidden=true});
+    canvas.addEventListener("click",e=>{if(state.moved)return;const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=20;nodes.forEach(n=>{const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best=n;dist=d}});if(best){selectedId=best.id;state.trace=[...traceFor(selectedId)];state.rippleStart=performance.now();renderSelection();updateDetail()}});
+    $("#graph-play",host).onclick=()=>{state.playing=!state.playing;state.startedAt=performance.now();state.lastTick=state.startedAt;$("#graph-play",host).textContent=state.playing?"Ⅱ 暂停回放":"▶ 开始回放"};
     $("#graph-trace",host).onclick=()=>{state.trace=state.trace.length?[]:[...traceFor(selectedId)]};
-    $("#graph-reset",host).onclick=()=>{state.yaw=.58;state.pitch=.22;state.zoom=1};
-    $$(".graph-steps button",host).forEach(b=>b.onclick=()=>{activeCase=b.dataset.graphCase;$$(".graph-steps button",host).forEach(x=>x.classList.toggle("active",x===b));renderAll(false)});
-    draw(performance.now());
+    $("#graph-reset",host).onclick=()=>{state.yaw=.48;state.pitch=.27;state.zoom=1.02};
+    $("#graph-exit",host).onclick=()=>{activeChannel="dashboard";activeView="dashboard";activeCase="all";renderAll(true)};
+    $$(".graph-steps button",host).forEach(b=>b.onclick=()=>{activeCase=b.dataset.graphCase;renderAll(false)});
+    updateDetail();draw(performance.now());
   }
   function renderAll(resetScroll=true){
     buildSidebar();renderHeader();

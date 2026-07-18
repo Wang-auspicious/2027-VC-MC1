@@ -104,3 +104,23 @@ button{cursor:pointer}
 .graph-bottom{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;border-top:1px solid var(--line);padding:9px 2px 2px;color:var(--muted);font:9px var(--mono)}.graph-legend,.graph-steps{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.graph-legend b{color:var(--ink);font-weight:500}.graph-legend span{display:flex;align-items:center;gap:4px}.edge-dot{width:8px;height:8px;background:var(--c);display:inline-block;border-radius:50%}.edge-dot.dashed{border:1px dashed var(--yellow);background:transparent}.graph-steps{justify-content:center}.graph-steps button{border:0;background:none;color:var(--muted);padding:4px 5px;font:9px var(--mono)}.graph-steps button:hover{color:var(--ink)}.graph-steps button.active{background:var(--ink);color:var(--paper)}.graph-count{text-align:right;white-space:nowrap}.graph-count b{color:var(--ink);font:16px var(--mono);margin-right:5px}
 @media(max-width:1100px){.graph-bottom{grid-template-columns:1fr}.graph-count{text-align:left}.graph-steps{justify-content:flex-start}}
 @media(max-width:760px){.graph-topline{align-items:flex-start;flex-direction:column}.graph-actions{width:100%}.graph-actions button{flex:1}.graph-stage-wrap{min-height:480px}.graph-bottom{gap:6px}.graph-steps{overflow:auto;flex-wrap:nowrap}}
+.graph-mode .workspace-grid{grid-template-columns:1fr}
+.graph-mode .left-sidebar,.graph-mode .right-inspector,.graph-mode .conversation-header,.graph-mode .filter-strip,.graph-mode .composer{display:none}
+.graph-mode .conversation-panel{background:#e7eee8}
+.graph-mode .message-stage{padding:0;overflow:hidden}
+.graph-mode .graph-view{height:100%}
+.graph-workbench{position:relative;height:100%;min-height:0;background:#e7eee8}
+.graph-full-head{position:absolute;z-index:4;left:28px;right:28px;top:22px;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;pointer-events:none}
+.graph-full-head>div{pointer-events:auto}.graph-full-head h2{margin:0;color:#252723;font-size:27px;letter-spacing:-.035em;text-shadow:0 1px 0 rgba(255,255,255,.7)}
+.graph-full-head .graph-eyebrow{margin-bottom:7px;color:#2e9388}
+.graph-full-head .graph-actions{margin-top:3px}.graph-full-head .graph-actions button{background:rgba(248,245,238,.83);backdrop-filter:blur(4px);border-color:#b4c2b6;box-shadow:0 2px 0 rgba(54,70,58,.06);font-size:10px}.graph-full-head .graph-actions .graph-primary{background:#1e302b;color:#f6f3ea;border-color:#1e302b}
+.graph-full-head .graph-actions button:hover{background:#fffdf8;border-color:#252723}.graph-full-head .graph-actions .graph-primary:hover{background:#2e9388;border-color:#2e9388}
+.graph-stage-wrap{position:absolute;inset:0;margin:0;border:0;background:transparent;box-shadow:none}
+.graph-canvas-wrap{position:absolute;inset:0}.evidence-canvas{width:100%;height:100%}
+.graph-overlay{top:90px;left:29px;right:29px;color:#667067}.graph-overlay span:first-child,.graph-overlay span:last-child{background:rgba(248,245,238,.72);border:1px solid rgba(180,194,182,.72);padding:6px 8px}
+.graph-detail{position:absolute;z-index:3;left:28px;bottom:62px;width:min(320px,34vw);padding:13px 15px;background:rgba(250,248,243,.86);border:1px solid rgba(124,145,130,.52);backdrop-filter:blur(5px);box-shadow:5px 5px 0 rgba(52,73,58,.08);pointer-events:none}.graph-detail:empty{display:none}.graph-detail .detail-kicker{display:block;color:#2e9388;font:9px var(--mono);margin-bottom:4px}.graph-detail b{display:block;font-size:14px}.graph-detail p{margin:7px 0 7px;color:#4d544e;font-size:11px;line-height:1.45}.graph-detail em{color:#7d887f;font:9px var(--mono);font-style:normal}
+.graph-tooltip{background:rgba(250,248,243,.95);border-color:#5f7465;box-shadow:4px 4px 0 rgba(52,73,58,.11)}
+.graph-footer{position:absolute;z-index:4;left:28px;right:28px;bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 11px;background:rgba(248,245,238,.82);border:1px solid rgba(180,194,182,.78);backdrop-filter:blur(5px);color:#6b746b}
+.graph-footer .graph-count{color:#69736b}.graph-footer .graph-count b{color:#252723}
+.graph-footer .graph-steps button{color:#6c756d}.graph-footer .graph-steps button.active{background:#1e302b;color:#f6f3ea}
+@media(max-width:900px){.graph-full-head{left:16px;right:16px;top:15px}.graph-full-head h2{font-size:21px}.graph-footer{left:16px;right:16px;bottom:12px;flex-wrap:wrap}.graph-detail{left:16px;bottom:98px;width:min(330px,calc(100vw - 32px))}.graph-overlay{left:16px;right:16px;top:75px}}
