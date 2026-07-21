@@ -47,6 +47,7 @@
   const channels=[
     {id:"dashboard",symbol:"▦",name:"仪表盘",desc:""},
     {id:"evidence_graph",symbol:"◇",name:"协作证据图谱",desc:"在三维空间中追踪消息、角色与公开动作"},
+    {id:"warning_graph",symbol:"◌",name:"行为先兆图谱",desc:"比较 77 个公开事件的行为相似结构与历史先例"},
     {id:"all",symbol:"⌁",name:"全部消息",desc:"全部 912 条记录的时间序列"},
     {id:"comms_huddle",symbol:"#",name:"协作群聊",desc:"全体成员共享的协作现场"},
     {id:"side_huddle",symbol:"#",name:"侧边群聊",desc:"小范围的并行讨论与补充"},
@@ -118,7 +119,7 @@
     return scoped.filter(m=>caseMatch(m)&&queryMatch(m));
   }
   function buildSidebar(){
-    const counts=Object.fromEntries(channels.map(c=>[c.id,c.id==="dashboard"||c.id==="evidence_graph"?"":c.id==="all"?messages.length:messages.filter(m=>m.channel===c.id).length]));
+    const counts=Object.fromEntries(channels.map(c=>[c.id,c.id==="dashboard"||c.id==="evidence_graph"||c.id==="warning_graph"?"":c.id==="all"?messages.length:messages.filter(m=>m.channel===c.id).length]));
     $("#channel-list").innerHTML=channels.map(c=>`<button class="channel-item ${activeChannel===c.id?"active":""}" data-channel="${c.id}"><span class="channel-symbol">${c.symbol}</span><span>${c.name}</span><span class="channel-count">${counts[c.id]}</span></button>`).join("");
     $("#channel-list").onclick=e=>{const b=e.target.closest("[data-channel]");if(!b)return;openChannel(b.dataset.channel)};
     $("#dm-list").innerHTML=dmPairs.slice(0,4).map(([key,list])=>{const [a,b]=pairNames(key),last=list.at(-1);return `<button class="dm-item" data-pair="${key}"><span class="pair-avatar">${avatar({agent_label:a})}${avatar({agent_label:b})}</span><span>${actorDefs[a].zh} × ${actorDefs[b].zh}<small>${esc(short(messageText(last)).slice(0,25))}</small></span></button>`}).join("");
@@ -128,7 +129,7 @@
   }
   function openChannel(id){
     activeChannel=id;activeAgent="";activePair="";
-    activeView=id==="dashboard"?"dashboard":id==="evidence_graph"?"graph":id==="one_on_one_chat"?"dm-directory":publicChannels.has(id)?"posts":"group";
+    activeView=id==="dashboard"?"dashboard":id==="evidence_graph"?"graph":id==="warning_graph"?"warning-graph":id==="one_on_one_chat"?"dm-directory":publicChannels.has(id)?"posts":"group";
     renderAll(false);
   }
   function openDM(key){activePair=key;activeAgent="";activeChannel="one_on_one_chat";activeView="dm";renderAll(false)}
@@ -231,54 +232,119 @@
   }
   function renderGraph(){
     cancelAnimationFrame(graphFrame);
-    const list=scopeMessages(),canvas=document.createElement("canvas"),roleOrder=Object.keys(actorDefs);
+    const list=scopeMessages(),canvas=document.createElement("canvas");
+    // 角色泳道按发言量(活跃度)排序:Legal→Social→Platform→PR→PR-Intern→Intern→Judge
+    const roleCounts={};messages.forEach(m=>roleCounts[m.agent_label]=(roleCounts[m.agent_label]||0)+1);
+    const roleOrder=Object.keys(actorDefs).sort((a,b)=>(roleCounts[b]||0)-(roleCounts[a]||0));
     canvas.className="evidence-canvas";
     const roleColors={"Legal-Agent":"#d75a3f","Platform-Trust-Agent":"#2e9388","PR-Agent":"#c58a27","Social-Manager-Agent":"#8a68b5","PR-Intern-Agent":"#6d9b56","Intern-Agent":"#4d78a2","Judge-Agent":"#6e6a62"};
     const caseNames={all:"全局协作场",normal:"正常发布链",near_miss:"险情窗口",incident:"有意披露事件"};
+    const minT=list.length?list[0].timestamp:"",maxT=list.length?list.at(-1).timestamp:"";
+    const span=minT&&maxT&&minT!==maxT?maxT.localeCompare(minT):1;
+    // nodes 同时携带 2D 坐标(ri,t,jitter)和 3D 坐标(x,y,z,layer),切换模式无需重算
     const nodes=list.map((m,i)=>{
-      const ri=Math.max(0,roleOrder.indexOf(m.agent_label)),round=Number(m.round_index)||0,progress=round/22,layer=.55+ri*.15,angle=progress*Math.PI*2*1.18+(i%9)*.018;
-      return {id:m.message_id,kind:"message",message:m,role:m.agent_label,x:Math.cos(angle)*layer,y:Math.sin(angle)*layer,z:(ri-3)*.08+(i%5-2)*.012,layer:ri};
+      const ri=Math.max(0,roleOrder.indexOf(m.agent_label));
+      const t=span?Math.max(0,Math.min(1,m.timestamp.localeCompare(minT)/span)):.5;
+      const jitter=((m.timestamp.length*7+m.message_id.charCodeAt(m.message_id.length-1))*13%100-50)/50;
+      // 3D 原版布局:同心圆轨道,每角色一层,角度随轮次推进
+      const round=Number(m.round_index)||0,progress=round/22,layer=.55+ri*.15,angle=progress*Math.PI*2*1.18+(i%9)*.018;
+      return {id:m.message_id,kind:"message",message:m,role:m.agent_label,ri,t,jitter,
+        x:Math.cos(angle)*layer,y:Math.sin(angle)*layer,z:(ri-3)*.08+(i%5-2)*.012,layer:ri,sx:0,sy:0};
     });
-    const nodeMap=new Map(nodes.map(n=>[n.id,n])),edges=nodes.filter(n=>messageMap.has(n.message.responding_to)&&nodeMap.has(n.message.responding_to)).map(n=>({from:nodeMap.get(n.message.responding_to),to:n,role:n.role}));
-    const cores=roleOrder.map((role,i)=>{const layer=.55+i*.15,a=(i/roleOrder.length)*Math.PI*2-Math.PI/2;return {id:"role:"+role,kind:"role",role,label:actorDefs[role].zh,x:Math.cos(a)*layer,y:Math.sin(a)*layer,z:(i-3)*.08,layer:i}});
-    const allNodes=[...cores,...nodes],state=graphState={canvas,nodes,edges,cores,allNodes,roleColors,yaw:0,pitch:0,zoom:1.02,spread:1,focusX:0,focusY:0,focusZ:0,drag:false,moved:false,lastX:0,lastY:0,playing:false,playbackDelay:6500,lastTick:0,storyIndex:0,stepCase:"all",trace:[],storyLinks:[],startedAt:performance.now()};
+    const nodeMap=new Map(nodes.map(n=>[n.id,n]));
+    const edges=nodes.filter(n=>messageMap.has(n.message.responding_to)&&nodeMap.has(n.message.responding_to)).map(n=>({from:nodeMap.get(n.message.responding_to),to:n,role:n.role}));
+    // 每条消息被回应的次数(用于 Time Arcs 节点大小映射)
+    const replyCount=new Map();edges.forEach(e=>replyCount.set(e.from.id,(replyCount.get(e.from.id)||0)+1));
+    nodes.forEach(n=>n.replies=replyCount.get(n.id)||0);
+    // 3D 角色核心点(原版)
+    const cores=roleOrder.map((role,i)=>{const layer=.55+i*.15,a=(i/roleOrder.length)*Math.PI*2-Math.PI/2;return {id:"role:"+role,kind:"role",role,label:actorDefs[role].zh,x:Math.cos(a)*layer,y:Math.sin(a)*layer,z:(i-3)*.08,layer:i,ri:i}});
+    const allNodes=[...cores,...nodes];
+    const state=graphState={canvas,nodes,edges,cores,allNodes,roleOrder,roleColors,roleCounts,nodeMap,caseNames,minT,maxT,
+      mode:"2d", // "2d" 泳道 | "3d" 原版同心圆轨道
+      yaw:0,pitch:0,zoom:1.02,spread:1,focusX:0,focusY:0,focusZ:0, // 3D 相机
+      drag:false,moved:false,lastX:0,lastY:0,hoveredId:"",
+      selectedId,trace:new Set(),layoutDirty:true,grid:new Map(),gridCell:42,
+      storyIndex:({all:0,normal:1,near_miss:2,incident:3})[activeCase]??0,startedAt:performance.now()};
     const host=document.createElement("div");host.className="graph-workbench";
-    host.innerHTML=`<div class="graph-full-head"><div><span class="graph-eyebrow">协作证据场 · 三维回溯</span><h2>消息如何从协作中心扩散成公开动作</h2></div><div class="graph-actions"><button id="graph-exit">‹ 返回工作区</button><button id="graph-play" class="graph-primary">▶ 分镜播放</button><button id="graph-speed">速度 6.5s</button><button id="graph-trace">显示路径</button><button id="graph-reset">重置镜头</button></div></div>
-      <div class="graph-stage-wrap"><div class="graph-canvas-wrap"></div><div class="graph-overlay"><span id="graph-selection-label">${caseNames[activeCase]||caseNames.all}</span><span id="graph-camera-label">拖拽旋转 · 滚轮缩放</span></div><div class="graph-story" id="graph-story"></div><div class="graph-detail" id="graph-detail"></div><div class="graph-tooltip" id="graph-tooltip" hidden></div></div>
-      <div class="graph-footer"><div class="graph-legend"><b>轨迹颜色</b><span><i class="edge-dot" style="--c:#d75a3f"></i>法务</span><span><i class="edge-dot" style="--c:#2e9388"></i>平台</span><span><i class="edge-dot" style="--c:#8a68b5"></i>社媒</span><span><i class="edge-dot" style="--c:#c58a27"></i>公关</span><span><i class="edge-dot dashed"></i>分镜顺序</span></div><div class="graph-steps"><button data-graph-case="all" class="${activeCase==="all"?"active":""}">全局</button><button data-graph-case="normal" class="${activeCase==="normal"?"active":""}">06.04 正常发布</button><button data-graph-case="near_miss" class="${activeCase==="near_miss"?"active":""}">05.29 险情</button><button data-graph-case="incident" class="${activeCase==="incident"?"active":""}">06.05 事件</button></div><div class="graph-count"><b>${list.length}</b><span>条消息 · ${edges.length} 条明确回应</span></div></div>`;
+    host.innerHTML=`<div class="graph-full-head"><div><span class="graph-eyebrow">协作证据图谱 · 时间弧线</span><h2>横轴是时间，弧线是"谁回应了谁"</h2></div><div class="graph-actions"><button id="graph-exit">‹ 返回工作区</button><button id="graph-mode">切到 3D</button><button id="graph-trace">显示路径</button><button id="graph-reset">重置视图</button></div></div>
+      <div class="graph-stage-wrap"><div class="graph-canvas-wrap"></div><div class="graph-overlay"><span id="graph-selection-label">${caseNames[activeCase]||caseNames.all}</span><span id="graph-camera-label">点节点看回应链 · 滚轮缩放</span></div><div class="graph-tooltip" id="graph-tooltip" hidden></div></div>
+      <div class="graph-detail-panel" id="graph-detail-panel" aria-hidden="true"><button class="detail-panel-close" id="detail-panel-close" aria-label="收起">×</button><div class="detail-panel-head"><span class="detail-panel-eyebrow">聚焦消息</span><p class="detail-panel-hint">在图谱上点一个点，它的回应链在这里展开</p></div><div class="detail-panel-body" id="detail-panel-body"></div></div>
+      <div class="graph-footer"><div class="graph-legend"><b>角色</b>${roleOrder.map(r=>`<span><i class="edge-dot" style="--c:${roleColors[r]}"></i>${actorDefs[r].zh}</span>`).join("")}<span><i class="edge-dot" style="--c:#e85d38"></i>公开动作</span></div><div class="graph-steps"><button data-graph-case="all" class="${activeCase==="all"?"active":""}">全局</button><button data-graph-case="normal" class="${activeCase==="normal"?"active":""}">06.04 正常发布</button><button data-graph-case="near_miss" class="${activeCase==="near_miss"?"active":""}">05.29 险情</button><button data-graph-case="incident" class="${activeCase==="incident"?"active":""}">06.05 事件</button></div><div class="graph-count"><b>${list.length}</b><span>条消息 · ${edges.length} 条明确回应</span></div></div>`;
     $(".graph-canvas-wrap",host).appendChild(canvas);$("#message-list").className="message-list graph-view";$("#message-list").innerHTML="";$("#message-list").appendChild(host);
-    const tooltip=$("#graph-tooltip",host),selectionLabel=$("#graph-selection-label",host),detail=$("#graph-detail",host);
+    const tooltip=$("#graph-tooltip",host),selectionLabel=$("#graph-selection-label",host),cameraLabel=$("#graph-camera-label",host);
+    const panel=$("#graph-detail-panel",host),panelBody=$("#detail-panel-body",host),panelHint=$(".detail-panel-hint",host);
     const storySteps=[
-      {case:"all",title:"先看全局：七个角色，各自占据一层轨道",body:"这里不是一团随机连线。每一层只放一个角色的消息，跨层连线才表示一次可回查的回应。",messageIds:[]},
-      {case:"normal",title:"06.04 正常发布：职责保持分开",body:"Judge 复核，Legal 授权，PR 通过官方账号执行。三种职责分开，发布链没有绕开门。",messageIds:["20460604_12_009","20460604_12_010","20460604_12_017","20460604_12_018"]},
-      {case:"near_miss",title:"05.29 险情：先越过边界，再被收回",body:"Social 从个人账号发布敏感提示，随后删除并暂停发布。消息被控制了，但发布能力没有被封住。",messageIds:["20460529_08_012","20460529_08_013","20460529_08_014","20460529_08_019","20460529_08_020"]},
-      {case:"incident",title:"06.05 事件：动作是有意的，授权无法独立验证",body:"Legal 发出 GO 并亲自确认合并，但数据里没有独立可核验的发布前书面同意。",messageIds:["20460605_19_009","20460605_21_020","20460605_21_024","20460605_21_026","20460605_21_027","20460605_21_055"]},
-      {case:"all",title:"为什么只看这三段？因为它们构成一条证据链",body:"06.04 是控制组，05.29 是最接近的历史险情，06.05 是赛题事件。三段对照，才能看出日常、近失与失控的差别。",messageIds:[]}
+      {case:"all",title:"先看全局：七条角色轴，横轴是时间",body:"每条消息是一个点（圆=内部消息，橙菱形=公开动作），弧线表示「谁回应了谁」。点越大=被回应越多。点任意一个点，它的上下游回应链会亮起来。共 "+list.length+" 条消息。"},
+      {case:"normal",title:"06.04 正常发布：职责分开，链路完整",body:"Judge 复核 → Legal 授权 → PR 通过官方账号执行。三种职责各司其职，发布链没有绕过任何一道门。",ids:["20460604_12_009","20460604_12_010","20460604_12_017","20460604_12_018"]},
+      {case:"near_miss",title:"05.29 险情：先越过边界，再被收回",body:"Social 从个人账号发布敏感提示，随后删除并暂停。消息被控制了——但「能发布」这个能力本身没被封住。这是 06.05 的预演。",ids:["20460529_08_012","20460529_08_013","20460529_08_014","20460529_08_019","20460529_08_020"]},
+      {case:"incident",title:"06.05 事件：动作有意，授权却无法独立核验",body:"Legal 发出 GO 并亲自确认合并，但数据里找不到独立的发布前书面同意。职责链被同一个人压缩了。",ids:["20460605_19_009","20460605_21_020","20460605_21_024","20460605_21_026","20460605_21_027","20460605_21_055"]}
     ];
-    function traceFor(id){const set=new Set(),walk=x=>{let n=0;while(x&&messageMap.has(x)&&n++<18&&!set.has(x)){set.add(x);x=messageMap.get(x).responding_to}};walk(id);nodes.filter(n=>n.message.responding_to===id).slice(0,14).forEach(n=>set.add(n.id));return set}
+    // 2 跳回应链:上游走到底 + 下游 2 跳
+    function traceFor(id){
+      const set=new Set([id]);
+      let cur=id,n=0;
+      while(cur&&messageMap.has(cur)&&n++<20){const m=messageMap.get(cur);if(!m.responding_to||!messageMap.has(m.responding_to))break;set.add(m.responding_to);cur=m.responding_to}
+      const frontier=[id];for(let hop=0;hop<2;hop++){const next=[];for(const x of frontier){nodes.filter(nn=>nn.message.responding_to===x).slice(0,16).forEach(nn=>{if(!set.has(nn.id)){set.add(nn.id);next.push(nn.id)}})}if(!next.length)break;frontier.push(...next)}
+      return set;
+    }
+    // Time Arcs 布局:角色水平轴 × 时间横轴,消息=轴上点,回应=弧
+    function layout2D(w,h){
+      const padL=98,padR=28,padT=22,padB=40,n=roleOrder.length;
+      const laneH=(h-padT-padB)/n;
+      // 弧线最大凸起:跨角色越远,弧越高(在相邻泳道间留出空间)
+      const arcMax=laneH*.46;
+      return {sx:t=>padL+t*(w-padL-padR),sy:ri=>padT+ri*laneH+laneH*.5,laneH,arcMax,padL,padR,padT,padB};
+    }
+    // 3D 投影(原版 yaw/pitch 旋转)
     function project(p,w,h){
-      const px=(p.x-state.focusX)*state.spread,py=(p.y-state.focusY)*state.spread,pz=(p.z-state.focusZ)*state.spread,cy=Math.cos(state.yaw),sy=Math.sin(state.yaw),cp=Math.cos(state.pitch),sp=Math.sin(state.pitch),x=px*cy-pz*sy,z=px*sy+pz*cy,y=py*cp-z*sp,zz=py*sp+z*cp;
+      const px=(p.x-state.focusX)*state.spread,py=(p.y-state.focusY)*state.spread,pz=(p.z-state.focusZ)*state.spread;
+      const cy=Math.cos(state.yaw),sy=Math.sin(state.yaw),cp=Math.cos(state.pitch),sp=Math.sin(state.pitch);
+      const x=px*cy-pz*sy,z=px*sy+pz*cy,y=py*cp-z*sp,zz=py*sp+z*cp;
       const perspective=1/(1+(zz+1.7)*.3),scale=Math.min(w,h)*.52*state.zoom*perspective;
       return {x:w/2+x*scale,y:h/2-y*scale,z:zz,scale:perspective};
     }
-    function updateStory(){
-      const s=storySteps[state.storyIndex%storySteps.length];
-      $("#graph-story",host).innerHTML=`<div class="story-index">${String(state.storyIndex+1).padStart(2,"0")} / ${String(storySteps.length).padStart(2,"0")}</div><div class="story-copy"><b>${s.title}</b><p>${s.body}</p></div><div class="story-controls"><button id="graph-prev" aria-label="上一段">←</button><button id="graph-next" aria-label="下一段">→</button></div>`;
-      activeCase=s.case;state.stepCase=s.case;selectionLabel.textContent=caseNames[s.case]||caseNames.all;
+    // 节点屏幕坐标(按当前模式)
+    function nodePos(n,w,h){
+      if(state.mode==="3d")return project(n,w,h);
+      const L=layout2D(w,h);return {x:L.sx(n.t),y:L.sy(n.ri)};
     }
-    function updateDetail(){
-      const m=messageMap.get(selectedId);if(!m){detail.innerHTML="";return}const a=actor(m),traceSize=state.trace.length||traceFor(selectedId).size;detail.innerHTML=`<span class="detail-kicker">${a.zh} · ${m.channel_label_zh}</span><b>${fmtDate(m.date)} ${fmtTime(m.timestamp)} · 第${Number(m.round_index)+1}轮</b><p>${esc(short(messageText(m)).slice(0,130))}</p><em>${traceSize} 个节点在这条路径上</em>`;
+    // 节点半径:sqrt 压缩映射被回应数,0 回复有保底,高回复不爆炸
+    function nodeRadius(n,hot){
+      const base=2.8,maxExtra=3.2;
+      const r=base+Math.sqrt(Math.min(n.replies||0,16))*0.8;
+      return hot?r+1.6:r;
     }
-    function applyStory(index){
-      state.storyIndex=(index+storySteps.length)%storySteps.length;
-      const s=storySteps[state.storyIndex],ids=(s.messageIds||[]).filter(id=>nodeMap.has(id));
-      if(ids.length){state.focusX=state.focusY=state.focusZ=0;state.zoom=.9;selectedId=ids.at(-1);state.trace=ids;state.storyLinks=ids.slice(1).map((id,i)=>({from:nodeMap.get(ids[i]),to:nodeMap.get(id)}));renderSelection()}else{state.focusX=state.focusY=state.focusZ=0;state.zoom=1.02;selectedId="";state.trace=[];state.storyLinks=[];renderSelection()}
-      updateStory();updateDetail();
+    // 画菱形(公开动作)
+    function drawDiamond(ctx,x,y,r){ctx.beginPath();ctx.moveTo(x,y-r);ctx.lineTo(x+r,y);ctx.lineTo(x,y+r);ctx.lineTo(x-r,y);ctx.closePath()}
+    function rebuildGrid(w,h){
+      state.grid.clear();const cell=state.gridCell;
+      nodes.forEach(n=>{const p=nodePos(n,w,h);n.sx=p.x;n.sy=p.y;const gx=Math.floor(p.x/cell),gy=Math.floor(p.y/cell);const key=gx+","+gy;if(!state.grid.has(key))state.grid.set(key,[]);state.grid.get(key).push(n)});
     }
-    function nextPlayback(now){
-      if(!state.playing)return;
-      applyStory(state.storyIndex+1);
-      state.lastTick=now;
+    function pickNode(x,y){
+      const cell=state.gridCell,gx=Math.floor(x/cell),gy=Math.floor(y/cell);let best=null,bestD=22;
+      for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const arr=state.grid.get((gx+dx)+","+(gy+dy));if(!arr)continue;for(const n of arr){const d=Math.hypot(n.sx-x,n.sy-y);if(d<bestD){best=n;bestD=d}}}
+      return best;
+    }
+    function updateSelectionLabel(){selectionLabel.textContent=caseNames[activeCase]||caseNames.all}
+    // 右侧 Slack 详情面板:选中消息 + 同频道上下文
+    function renderPanel(){
+      const m=messageMap.get(selectedId);
+      if(!m){panel.classList.remove("open");panel.setAttribute("aria-hidden","true");return}
+      panel.classList.add("open");panel.setAttribute("aria-hidden","false");
+      panelHint.textContent="回应链已高亮 · 点下面任一条可切换焦点";
+      const ch=messages.filter(x=>x.channel===m.channel),idx=ch.findIndex(x=>x.message_id===m.message_id);
+      const ctx=ch.slice(Math.max(0,idx-4),idx+5);
+      const focus=selectedId,tr=state.trace;
+      panelBody.innerHTML=ctx.map(mm=>{
+        const a=actor(mm),isFocus=mm.message_id===focus,inTrace=tr.has(mm.message_id),isPublic=publicChannels.has(mm.channel);
+        const roundColor=["#e85d38","#2e9388","#a266c8","#b68b21","#4a73a7","#7d9b46"][mm.round_index%6];
+        return `<article class="dp-msg ${isFocus?"focus":""} ${inTrace?"in-trace":""} ${isPublic?"public":""}" data-id="${mm.message_id}" style="--bubble:${a.bubble}">
+          <div class="dp-msg-head">${avatar(mm)}<b>${a.zh}</b><span class="dp-role">${a.role}</span>${isPublic?'<span class="dp-badge">公开</span>':""}<time>${fmtTime(mm.timestamp)}</time><span class="round-badge" style="--round:${roundColor}">R${mm.round_index+1}</span></div>
+          <div class="dp-msg-body">${replyPreview(mm)}<p>${esc(messageText(mm))}</p></div>
+          <code class="dp-msg-id">${mm.message_id}</code>
+        </article>`;
+      }).join("");
+      $$(".dp-msg",panelBody).forEach(el=>el.onclick=()=>{selectedId=el.dataset.id;state.trace=traceFor(selectedId);renderPanel();renderSelection();scheduleDraw()});
     }
     function scheduleDraw(){if(!graphFrame)graphFrame=requestAnimationFrame(draw)}
     function draw(now=0){
@@ -286,43 +352,539 @@
       const rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(1,rect.width),h=Math.max(1,rect.height);
       if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr)}
       const ctx=canvas.getContext("2d");ctx.setTransform(dpr,0,0,dpr,0,0);
-      const bg=ctx.createRadialGradient(w*.5,h*.47,0,w*.5,h*.47,Math.max(w,h)*.7);bg.addColorStop(0,"#fffdf8");bg.addColorStop(.5,"#edf2ec");bg.addColorStop(1,"#dfe8e1");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
-      if(state.playing){const elapsed=now-state.startedAt;state.yaw=Math.sin(elapsed*.00012)*.13;state.pitch=Math.sin(elapsed*.00009)*.025;state.zoom=1.02+Math.sin(elapsed*.0001)*.04;if(now-state.lastTick>state.playbackDelay)nextPlayback(now)}
-      const trace=state.trace.length?new Set(state.trace):traceFor(selectedId);state.trace=[...trace];
-      roleOrder.forEach((role,idx)=>{const radius=.55+idx*.15,z=(idx-3)*.08;ctx.beginPath();for(let i=0;i<=96;i++){const a=i/96*Math.PI*2,p=project({x:Math.cos(a)*radius,y:Math.sin(a)*radius,z},w,h);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)}ctx.strokeStyle=`${state.roleColors[role]}32`;ctx.lineWidth=idx%2?1:1.5;ctx.stroke()});
-      edges.forEach(e=>{const a=project(e.from,w,h),b=project(e.to,w,h),hot=trace.has(e.from.id)&&trace.has(e.to.id),cross=e.from.role!==e.to.role,publicEdge=publicChannels.has(e.to.message.channel);if(!hot&&!cross)return;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=hot?(publicEdge?"#e85d38ef":`${state.roleColors[e.role]}ef`):(publicEdge?"#e85d3820":`${state.roleColors[e.role]}18`);ctx.lineWidth=hot?(publicEdge?3.6:2.8):.7;ctx.stroke()});
-      if(state.storyLinks.length){ctx.save();ctx.setLineDash([6,5]);state.storyLinks.forEach((e,i)=>{const a=project(e.from,w,h),b=project(e.to,w,h);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=i===state.storyLinks.length-1?"#e85d38":"#263a34";ctx.lineWidth=2.6;ctx.stroke()});ctx.restore()}
-      const projected=allNodes.map(n=>({n,p:project(n,w,h)})).sort((a,b)=>a.p.z-b.p.z);
-      projected.forEach(({n,p})=>{const hot=n.kind==="role"||trace.has(n.id)||n.id===selectedId,color=state.roleColors[n.role]||"#77746c";if(n.kind==="message"&&p.scale<.38)return;const r=n.kind==="role"?12:Math.max(1.7,3.1*p.scale)+(hot?6:0);ctx.globalAlpha=n.kind==="role"?.98:(hot?.98:.22);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(hot){ctx.beginPath();ctx.arc(p.x,p.y,r+9,0,Math.PI*2);ctx.strokeStyle=`${color}8a`;ctx.lineWidth=1.8;ctx.stroke()}if(n.kind==="role"){const right=n.x>=0;ctx.font="600 10px IBM Plex Sans Condensed,Microsoft YaHei,sans-serif";ctx.fillStyle="#252723";ctx.textAlign=right?"left":"right";ctx.fillText(n.label,p.x+(right?15:-15),p.y+3);ctx.textAlign="left"}});ctx.globalAlpha=1;
-      selectionLabel.textContent=state.playing?`${caseNames[state.stepCase]||caseNames.all} · 分镜播放中`:(caseNames[activeCase]||caseNames.all);if(state.playing)graphFrame=requestAnimationFrame(draw);
+      if(state.mode==="3d"){
+        // ───── 3D 原版同心圆轨道 ─────
+        const bg=ctx.createRadialGradient(w*.5,h*.47,0,w*.5,h*.47,Math.max(w,h)*.7);bg.addColorStop(0,"#fffdf8");bg.addColorStop(.5,"#edf2ec");bg.addColorStop(1,"#dfe8e1");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+        if(state.layoutDirty){rebuildGrid(w,h);state.layoutDirty=false}
+        const tr=state.trace;
+        roleOrder.forEach((role,idx)=>{const radius=.55+idx*.15,z=(idx-3)*.08;ctx.beginPath();for(let i=0;i<=96;i++){const a=i/96*Math.PI*2,p=project({x:Math.cos(a)*radius,y:Math.sin(a)*radius,z},w,h);i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)}ctx.strokeStyle=`${state.roleColors[role]}32`;ctx.lineWidth=idx%2?1:1.5;ctx.stroke()});
+        edges.forEach(e=>{const a=project(e.from,w,h),b=project(e.to,w,h),hot=tr.has(e.from.id)&&tr.has(e.to.id),cross=e.from.role!==e.to.role,publicEdge=publicChannels.has(e.to.message.channel);if(!hot&&!cross)return;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=hot?(publicEdge?"#e85d38ef":`${state.roleColors[e.role]}ef`):(publicEdge?"#e85d3820":`${state.roleColors[e.role]}18`);ctx.lineWidth=hot?(publicEdge?3.6:2.8):.7;ctx.stroke()});
+        const projected=allNodes.map(n=>({n,p:project(n,w,h)})).sort((a,b)=>a.p.z-b.p.z);
+        projected.forEach(({n,p})=>{const hot=n.kind==="role"||tr.has(n.id)||n.id===selectedId,color=state.roleColors[n.role]||"#77746c";if(n.kind==="message"&&p.scale<.38)return;const r=n.kind==="role"?12:Math.max(1.7,3.1*p.scale)+(hot?6:0);ctx.globalAlpha=n.kind==="role"?.98:(hot?.98:.42);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();if(hot){ctx.beginPath();ctx.arc(p.x,p.y,r+9,0,Math.PI*2);ctx.strokeStyle=`${color}8a`;ctx.lineWidth=1.8;ctx.stroke()}if(n.kind==="role"){const right=n.x>=0;ctx.font="600 10px IBM Plex Sans Condensed,Microsoft YaHei,sans-serif";ctx.fillStyle="#252723";ctx.textAlign=right?"left":"right";ctx.fillText(n.label,p.x+(right?15:-15),p.y+3);ctx.textAlign="left"}});ctx.globalAlpha=1;
+      } else {
+        // ───── 2D Time Arcs:角色水平轴 × 时间横轴 ─────
+        const bg=ctx.createLinearGradient(0,0,0,h);bg.addColorStop(0,"#f5f8f1");bg.addColorStop(1,"#e8efe5");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+        if(state.layoutDirty){rebuildGrid(w,h);state.layoutDirty=false}
+        const tr=state.trace,L=layout2D(w,h);
+        // 角色轴(水平线) + 左侧标签
+        roleOrder.forEach((role,ri)=>{
+          const y=L.sy(ri),c=state.roleColors[role];
+          ctx.fillStyle=ri%2?"rgba(255,255,255,.28)":"rgba(255,255,255,.1)";ctx.fillRect(L.padL,y-L.laneH/2,w-L.padL-L.padR,L.laneH);
+          ctx.strokeStyle=c+"40";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(L.padL,y);ctx.lineTo(w-L.padR,y);ctx.stroke();
+          ctx.font="600 11px IBM Plex Sans Condensed,Microsoft YaHei,sans-serif";ctx.fillStyle="#252723";ctx.textAlign="right";
+          ctx.fillText(actorDefs[role].zh,L.padL-10,y-3);
+          ctx.font="9px IBM Plex Sans Mono,monospace";ctx.fillStyle="#8a918a";ctx.fillText(String(roleCounts[role]||0)+"条",L.padL-10,y+9);
+          ctx.textAlign="left";
+        });
+        // 关键日期竖线(地标)
+        const keyDates=[["2046-05-29","险情",true],["2046-06-05","事件",true],["2046-06-04","正常",false],["2046-05-17","开局",false]];
+        const tSpan=(state.maxT.localeCompare(state.minT))||1;
+        keyDates.forEach(([d,lbl,key])=>{if(d<state.minT||d>state.maxT)return;const t=Math.max(0,Math.min(1,d.localeCompare(state.minT)/tSpan));const x=L.sx(t);ctx.strokeStyle=key?"#e85d3866":"#00000022";ctx.lineWidth=key?1.5:.8;ctx.setLineDash(key?[5,3]:[]);ctx.beginPath();ctx.moveTo(x,L.padT);ctx.lineTo(x,h-L.padB);ctx.stroke();ctx.setLineDash([]);ctx.font=key?"600 10px IBM Plex Sans Mono,monospace":"9px IBM Plex Sans Mono,monospace";ctx.fillStyle=key?"#c44a2e":"#8a8f86";ctx.textAlign="center";ctx.fillText(lbl,x,h-L.padB+16);ctx.textAlign="left"});
+        // ── 弧线(回应关系) ──
+        // 默认只画跨角色弧(同角色自回应价值低,用更淡的色)
+        edges.forEach(e=>{
+          const a=e.from,b=e.to,hot=tr.has(a.id)&&tr.has(b.id);
+          const pa=nodePos(a,w,h),pb=nodePos(b,w,h);
+          const cross=a.ri!==b.ri,publicEdge=publicChannels.has(b.message.channel);
+          if(!hot&&!cross)return; // 默认隐藏同角色弧,除非在 trace 内
+          // 弧高度:跨角色=按角色距离,同角色=矮弧
+          const riDist=Math.abs(a.ri-b.ri);
+          const arcH=cross?Math.max(8,riDist*L.laneH*.42)+L.laneH*.15:L.laneH*.18;
+          // 弧方向:从旧(from)到新(to),凸向时间前进方向(向上)
+          const midX=(pa.x+pb.x)/2,midY=(pa.y+pb.y)/2-arcH;
+          ctx.beginPath();ctx.moveTo(pa.x,pa.y);ctx.quadraticCurveTo(midX,midY,pb.x,pb.y);
+          if(hot){ctx.strokeStyle=publicEdge?"#e85d38":state.roleColors[b.role];ctx.lineWidth=publicEdge?3.2:2.4;ctx.globalAlpha=1}
+          else{ctx.strokeStyle=publicEdge?"#e85d3840":state.roleColors[b.role]+"33";ctx.lineWidth=publicEdge?1.3:.8;ctx.globalAlpha=cross?.7:.4}
+          ctx.stroke();ctx.globalAlpha=1;
+        });
+        // ── 节点(全部 912 个) ──
+        nodes.forEach(n=>{
+          const p=nodePos(n,w,h),hot=tr.has(n.id),isSel=n.id===selectedId,isHover=n.id===state.hoveredId,isPublic=publicChannels.has(n.message.channel);
+          const color=state.roleColors[n.role]||"#77746c";
+          const r=nodeRadius(n,hot||isSel);
+          const baseAlpha=isPublic?.85:.6;
+          const alpha=hot?1:(isSel?1:(isHover?.9:baseAlpha));
+          ctx.globalAlpha=alpha;
+          if(isPublic){drawDiamond(ctx,p.x,p.y,r);ctx.fillStyle="#e85d38";ctx.fill();ctx.globalAlpha=Math.min(1,alpha);ctx.strokeStyle="#b53820";ctx.lineWidth=1;ctx.stroke()}
+          else{ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill()}
+          if(isSel||hot){ctx.globalAlpha=.7;ctx.strokeStyle=isPublic?"#e85d38":color;ctx.lineWidth=1.6;ctx.beginPath();ctx.arc(p.x,p.y,r+4,0,Math.PI*2);ctx.stroke()}
+          ctx.globalAlpha=1;
+        });
+      }
+      updateSelectionLabel();
     }
+    // 鼠标悬停 → tooltip + 高亮(两种模式都用屏幕坐标分桶)
+    canvas.addEventListener("mousemove",e=>{
+      const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+      const n=pickNode(x,y);
+      if(n&&n.id!==state.hoveredId){state.hoveredId=n.id;scheduleDraw()}
+      else if(!n&&state.hoveredId){state.hoveredId="";scheduleDraw()}
+      if(n){tooltip.hidden=false;tooltip.style.left=`${n.sx+14}px`;tooltip.style.top=`${n.sy+12}px`;tooltip.innerHTML=`<b>${actor(n.message).zh}</b><span>${fmtDate(n.message.date)} ${fmtTime(n.message.timestamp)}</span><p>${esc(short(messageText(n.message)).slice(0,96))}</p>`}else tooltip.hidden=true;
+    });
+    canvas.addEventListener("mouseleave",()=>{tooltip.hidden=true;if(state.hoveredId){state.hoveredId="";scheduleDraw()}});
+    canvas.addEventListener("click",e=>{
+      if(state.moved)return;
+      const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+      const n=pickNode(x,y);
+      if(n){selectedId=n.id;state.selectedId=n.id;state.trace=traceFor(n.id);renderPanel();renderSelection();scheduleDraw()}
+    });
+    // 拖拽:3D=旋转,2D=暂留(可扩展平移)
     canvas.addEventListener("pointerdown",e=>{state.drag=true;state.moved=false;state.lastX=e.clientX;state.lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
-    canvas.addEventListener("pointermove",e=>{if(!state.drag)return;const dx=e.clientX-state.lastX,dy=e.clientY-state.lastY;state.moved|=Math.abs(dx)+Math.abs(dy)>2;state.yaw+=dx*.006;state.pitch=Math.max(-.8,Math.min(.8,state.pitch+dy*.005));state.lastX=e.clientX;state.lastY=e.clientY;scheduleDraw()});
+    canvas.addEventListener("pointermove",e=>{if(!state.drag)return;const dx=e.clientX-state.lastX,dy=e.clientY-state.lastY;state.moved|=Math.abs(dx)+Math.abs(dy)>2;if(state.mode==="3d"){state.yaw+=dx*.006;state.pitch=Math.max(-.8,Math.min(.8,state.pitch+dy*.005))}state.lastX=e.clientX;state.lastY=e.clientY;scheduleDraw()});
     canvas.addEventListener("pointerup",e=>{state.drag=false;canvas.releasePointerCapture?.(e.pointerId)});
-    canvas.addEventListener("wheel",e=>{e.preventDefault();state.zoom=Math.max(.65,Math.min(1.55,state.zoom*(e.deltaY>0?.93:1.07)));scheduleDraw()},{passive:false});
-    canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=18;nodes.forEach(n=>{const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best={n,p};dist=d}});if(best){tooltip.hidden=false;tooltip.style.left=`${best.p.x+16}px`;tooltip.style.top=`${best.p.y+12}px`;tooltip.innerHTML=`<b>${actor(best.n.message).zh}</b><span>${fmtDate(best.n.message.date)} ${fmtTime(best.n.message.timestamp)}</span><p>${esc(short(messageText(best.n.message)).slice(0,98))}</p>`}else tooltip.hidden=true});
-    canvas.addEventListener("click",e=>{if(state.moved)return;const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,dist=20;nodes.forEach(n=>{const p=project(n,r.width,r.height),d=Math.hypot(p.x-x,p.y-y);if(d<dist){best=n;dist=d}});if(best){selectedId=best.id;state.trace=[...traceFor(selectedId)];state.storyLinks=[];renderSelection();updateDetail();scheduleDraw()}});
-    $("#graph-play",host).onclick=()=>{state.playing=!state.playing;state.startedAt=performance.now();state.lastTick=state.startedAt;$("#graph-play",host).textContent=state.playing?"Ⅱ 暂停分镜":"▶ 分镜播放";scheduleDraw()};
-    $("#graph-speed",host).onclick=e=>{const speeds=[9000,6500,4000],i=(speeds.indexOf(state.playbackDelay)+1)%speeds.length;state.playbackDelay=speeds[i];e.currentTarget.textContent=`速度 ${state.playbackDelay/1000}s`};
-    $("#graph-trace",host).onclick=()=>{state.trace=state.trace.length?[]:[...traceFor(selectedId)];scheduleDraw()};
-    $("#graph-reset",host).onclick=()=>{state.yaw=0;state.pitch=0;state.zoom=1.02;state.focusX=state.focusY=state.focusZ=0;scheduleDraw()};
+    canvas.addEventListener("wheel",e=>{e.preventDefault();state.zoom=Math.max(.65,Math.min(2.2,state.zoom*(e.deltaY>0?.93:1.08)));scheduleDraw()},{passive:false});
+    // 按钮绑定
+    $("#graph-mode",host).onclick=e=>{state.mode=state.mode==="2d"?"3d":"2d";state.layoutDirty=true;e.currentTarget.textContent=state.mode==="2d"?"切到 3D":"切到时间弧线";cameraLabel.textContent=state.mode==="3d"?"拖拽旋转 · 滚轮缩放 · 点节点看回应链":"点节点看回应链 · 滚轮缩放";scheduleDraw()};
+    $("#graph-trace",host).onclick=()=>{state.trace=state.trace.size?new Set():traceFor(selectedId);renderPanel();scheduleDraw()};
+    $("#graph-reset",host).onclick=()=>{state.yaw=0;state.pitch=0;state.zoom=1.02;state.focusX=state.focusY=state.focusZ=0;state.layoutDirty=true;selectedId="";state.trace=new Set();renderPanel();renderSelection();scheduleDraw()};
     $("#graph-exit",host).onclick=()=>{activeChannel="dashboard";activeView="dashboard";activeCase="all";renderAll(true)};
+    $("#detail-panel-close",host).onclick=()=>{panel.classList.remove("open");panel.setAttribute("aria-hidden","true")};
     $$(".graph-steps button",host).forEach(b=>b.onclick=()=>{activeCase=b.dataset.graphCase;renderAll(false)});
+    function applyStory(index){
+      state.storyIndex=(index+storySteps.length)%storySteps.length;
+      const s=storySteps[state.storyIndex];
+      activeCase=s.case;updateSelectionLabel();
+      const ids=(s.ids||[]).filter(id=>nodeMap.has(id));
+      if(ids.length){const t=new Set();ids.forEach(id=>{traceFor(id).forEach(x=>t.add(x))});state.trace=t;selectedId=ids[ids.length-1];renderPanel();renderSelection()}
+      else{selectedId="";state.trace=new Set();renderPanel();renderSelection()}
+    }
     applyStory(({all:0,normal:1,near_miss:2,incident:3})[activeCase]??0);
-    $("#graph-prev",host).onclick=()=>{state.playing=false;$("#graph-play",host).textContent="▶ 分镜播放";applyStory(state.storyIndex-1);scheduleDraw()};
-    $("#graph-next",host).onclick=()=>{state.playing=false;$("#graph-play",host).textContent="▶ 分镜播放";applyStory(state.storyIndex+1);scheduleDraw()};
-    draw(performance.now());
+    scheduleDraw();
   }
+  function renderEvidenceGraph(){
+    cancelAnimationFrame(graphFrame);
+
+    const roleOrder=Object.keys(actorDefs);
+    const roleColors={
+      "Legal-Agent":"#dc7358","Platform-Trust-Agent":"#329a90","PR-Agent":"#d5a33e",
+      "Social-Manager-Agent":"#9175bd","PR-Intern-Agent":"#78a857","Intern-Agent":"#6e9bb3","Judge-Agent":"#77736d"
+    };
+    const cases={
+      normal:{
+        label:"06.04 正常发布",short:"正常链",date:"2046.06.04",
+        title:"一条内容如何在职责分离下安全发布",
+        intro:"先看对照组：授权、审查和执行由不同角色接力，每一步都留下可回查消息。",
+        end:"这条链证明系统并非不能安全工作。关键差别是：发布之前，授权与终审都能被独立观察。",
+        ids:["20460604_12_009","20460604_12_010","20460604_12_017","20460604_12_018"],
+        notes:["审查先划定表达边界，授权随后由另一角色给出。","获得授权后仍返回终审，约束没有被跳过。","发布由独立执行者完成，并落在官方渠道。"]
+      },
+      near_miss:{
+        label:"05.29 险情",short:"险情链",date:"2046.05.29",
+        title:"事故发生前，组织已经收到过什么警告",
+        intro:"这不是无关的旧记录。05.29 已出现相同的边界试探，区别是当时审查链仍然及时收口。",
+        end:"历史险情提供了可操作的预警：当公开冲动绕开当下审查时，系统需要阻断，而不是继续协商。",
+        ids:["20460529_08_012","20460529_08_013","20460529_08_014","20460529_08_019","20460529_08_020"],
+        notes:["公开动作先发生，报告与审查只能在事后追赶。","删除控制了这一次传播，却没有改变发布权限。","组织转入人工停发与证据保全，风险暂时收口。","风险被正式识别，但个人与匿名发布能力仍然存在。"]
+      },
+      incident:{
+        label:"06.05 事故",short:"事故链",date:"2046.06.05",
+        title:"事故不是一个瞬间，而是一条逐步失去约束的行动链",
+        intro:"从最早的发布意图开始逐条前进。每次只增加一条消息，观察谁接手、谁警告、以及公开动作如何出现。",
+        end:"可支持的结论是控制失败与角色、渠道迁移；数据不能支持把最终责任归给某一个人，也没有观察到 17 时段的官方发帖。",
+        ids:["20460605_19_009","20460605_21_020","20460605_21_024","20460605_21_026","20460605_21_027","20460605_21_055"],
+        notes:["明确限制仍在生效，但后续推进只依赖 Legal 对口头同意的主张。","正式执行尚未被观察，备用公开渠道已经进入计划。","授权者直接成为发布者，审查、授权与执行在这里坍缩。","个人账号的确认被另一角色迅速放大，影响开始扩散。","匿名渠道继续固化叙事，跨账户控制始终没有收口。"]
+      }
+    };
+    Object.values(cases).forEach(c=>c.ids=c.ids.filter(id=>messageMap.has(id)));
+    const questions={
+      1:{
+        label:"事件与放行路径",
+        title:"哪些事件、关系与决策让不当发布越过禁运控制？",
+        prompt:"展示关键行动、因果关系、决策点和参与者，并找出让帖子通过禁运执行的决策与系统要素。",
+        guide:["沿 06.05 逐条前进","检查限制是否被新证据解除","观察授权、执行与渠道是否仍然分开"],
+        finding:"结论线索：发布是有意行动；真正失效的是一个允许个人渠道绕过审查与执行分离的开放路径。",
+        caseId:"incident",mode:"2d"
+      },
+      2:{
+        label:"行为结构变化",
+        title:"导致发布的行为，与此前的典型行为相比改变了什么？",
+        prompt:"发现系统、代理与人员的典型行为，再比较事故链与既往发布链在职责、渠道和执行方式上的差异。",
+        guide:["先看 06.04 正常链","再切到 06.05 事故链","比较解释、授权与执行分别落在谁身上"],
+        finding:"结论线索：异常不在消息数量，而在职责集中。正常链由 Judge、Legal、PR 分担，事故链的关键职能集中到 Legal。",
+        caseId:"normal",mode:"3d"
+      },
+      3:{
+        label:"先兆与组织记忆",
+        title:"事故前是否已有可识别的先兆？为什么没有形成持久控制？",
+        prompt:"识别过去的预期—实际差距与相似行为，并解释为什么此前的处置没有阻止同类路径再次出现。",
+        guide:["回到 05.29 个人发帖","观察删除与停发如何控制当次事件","检查高风险发布能力是否真正被移除"],
+        finding:"结论线索：05.29 已给出强预警。组织处理了消息，却没有移除个人与匿名渠道的绕行能力。",
+        caseId:"near_miss",mode:"2d"
+      }
+    };
+
+    const roleSeen={};
+    const allNodes=messages.map((m,i)=>{
+      const ri=roleOrder.indexOf(m.agent_label);
+      const li=roleSeen[m.agent_label]||0;roleSeen[m.agent_label]=li+1;
+      const round=Number(m.round_index)||0,progress=round/22;
+      const layer=.55+ri*.15,angle=progress*Math.PI*2*1.18+(li%9)*.018;
+      return {m,ri,i,x:Math.cos(angle)*layer,y:Math.sin(angle)*layer,z:(ri-3)*.08+(li%5-2)*.012};
+    });
+    const nodeMap=new Map(allNodes.map(n=>[n.m.message_id,n]));
+    const exactEdges=allNodes.flatMap(n=>{
+      const from=nodeMap.get(n.m.responding_to);
+      return from?[{a:from,b:n}]:[];
+    });
+    const children=new Map();
+    exactEdges.forEach(e=>{
+      if(!children.has(e.a.m.message_id))children.set(e.a.m.message_id,[]);
+      children.get(e.a.m.message_id).push(e.b.m.message_id);
+    });
+    children.forEach(ids=>ids.sort((a,b)=>messageMap.get(a).timestamp.localeCompare(messageMap.get(b).timestamp)));
+
+    const initialCase=activeCase==="normal"||activeCase==="near_miss"||activeCase==="incident"?activeCase:"incident";
+    const initialQuestion=initialCase==="normal"?2:initialCase==="near_miss"?3:1;
+    const state=graphState={
+      mode:questions[initialQuestion].mode,questionId:initialQuestion,caseId:initialCase,sequence:[...cases[initialCase].ids],step:0,
+      yaw:.42,pitch:-.24,zoom:1.08,drag:false,moved:false,lastX:0,lastY:0,hover:null,
+      transition:null,projected:new Map(),followNewest:true
+    };
+    const host=$("#message-list");
+    host.className="message-list graph-view";
+    host.innerHTML=`<section class="evidence-workbench">
+      <header class="evidence-head">
+        <div class="evidence-heading"><span class="graph-eyebrow">协作证据图谱 · 手动回溯</span><h2 id="evidence-title"></h2><p id="evidence-intro"></p></div>
+        <div class="evidence-actions">
+          <button id="evidence-exit">‹ 返回工作区</button>
+          <span class="mode-switch" role="group" aria-label="图谱视图">
+            <button data-evidence-mode="2d" class="${state.mode==="2d"?"active":""}">2D 对话链</button><button data-evidence-mode="3d" class="${state.mode==="3d"?"active":""}">3D 空间图谱</button>
+          </span>
+        </div>
+      </header>
+      <div class="evidence-navigation">
+        <nav class="evidence-questions" aria-label="赛题问题">${Object.entries(questions).map(([id,q])=>`<button data-evidence-question="${id}" class="${Number(id)===state.questionId?"active":""}"><b>0${id}</b><span>${q.label}</span></button>`).join("")}</nav>
+        <nav class="evidence-cases" aria-label="证据窗口">${Object.entries(cases).map(([id,c])=>`<button data-evidence-case="${id}" class="${id===state.caseId?"active":""}"><b>${c.date}</b><span>${c.short}</span></button>`).join("")}</nav>
+      </div>
+      <div class="evidence-guide"><span>阅读顺序</span><div id="evidence-guide"></div></div>
+      <div class="evidence-stage">
+        <section class="chain-panel" id="chain-panel" ${state.mode==="2d"?"":"hidden"}>
+          <div class="chain-viewport" id="chain-viewport"><div class="chain-world" id="chain-world">
+            <div class="chain-lanes" id="chain-lanes"></div><svg class="chain-arrows" id="chain-arrows" aria-hidden="true"></svg><div class="chain-cards" id="chain-cards"></div>
+          </div></div>
+        </section>
+        <section class="space-panel" id="space-panel" ${state.mode==="3d"?"":"hidden"}>
+          <canvas class="space-canvas" id="space-canvas"></canvas>
+          <svg class="space-leader" id="space-leader" aria-hidden="true"><path></path><rect width="5" height="5"></rect></svg>
+          <div class="space-hint">拖拽可连续旋转 360° · 滚轮缩放 · 点击任意消息点</div>
+          <article class="space-callout" id="space-callout"></article>
+        </section>
+      </div>
+      <footer class="evidence-footer">
+        <div class="evidence-progress"><span id="evidence-step"></span><i><b id="evidence-progress-bar"></b></i></div>
+        <div class="evidence-controls"><button id="evidence-prev">← 上一步</button><button id="evidence-next">下一步 →</button><button class="evidence-open-warning" data-open-warning-graph>进入 Q3 行为先兆图谱 ↗</button></div>
+        <p id="evidence-end"></p>
+      </footer>
+    </section>`;
+
+    const canvas=$("#space-canvas",host),ctx=canvas.getContext("2d");
+    const chainViewport=$("#chain-viewport",host),chainWorld=$("#chain-world",host);
+    const chainLanes=$("#chain-lanes",host),chainCards=$("#chain-cards",host),chainArrows=$("#chain-arrows",host);
+    const spacePanel=$("#space-panel",host),callout=$("#space-callout",host),leader=$("#space-leader",host);
+    let lastChainAnimation=-1;
+
+    function currentCase(){return cases[state.caseId]}
+    function currentMessage(){return messageMap.get(state.sequence[state.step])}
+    function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+    function ease(t){return 1-Math.pow(1-t,3)}
+    function hexRgb(hex){
+      const v=parseInt(hex.slice(1),16);
+      return [(v>>16)&255,(v>>8)&255,v&255];
+    }
+    function rgba(hex,a){
+      const [r,g,b]=hexRgb(hex);return `rgba(${r},${g},${b},${a})`;
+    }
+    function updateCopy(){
+      const q=questions[state.questionId];
+      $("#evidence-title",host).textContent=q.title;
+      $("#evidence-intro",host).textContent=q.prompt;
+      $("#evidence-guide",host).innerHTML=q.guide.map((text,i)=>`${i?'<i>→</i>':""}<b><em>${i+1}</em>${esc(text)}</b>`).join("");
+      let endText="";
+      if(state.step===state.sequence.length-1){
+        if(state.questionId===2&&state.caseId==="normal")endText="正常链读完了：现在切到 06.05 事故链，检查同样的职责是否仍由不同角色承担。";
+        else if((state.questionId===1&&state.caseId==="incident")||(state.questionId===2&&state.caseId==="incident")||(state.questionId===3&&state.caseId==="near_miss"))endText=q.finding;
+      }
+      $("#evidence-end",host).textContent=endText;
+      $("#evidence-step",host).textContent=`${String(state.step+1).padStart(2,"0")} / ${String(state.sequence.length).padStart(2,"0")}`;
+      $("#evidence-progress-bar",host).style.width=`${100*(state.step+1)/Math.max(1,state.sequence.length)}%`;
+      $("#evidence-prev",host).disabled=state.step===0||!!state.transition;
+      $("#evidence-next",host).disabled=state.step>=state.sequence.length-1||!!state.transition;
+    }
+
+    function renderChain(shouldFollow=false){
+      const topPad=10,leftPad=124,stepW=650,cardW=402;
+      const height=Math.max(320,chainViewport.clientHeight-14);
+      const laneH=(height-topPad*2)/roleOrder.length;
+      const visible=state.sequence.slice(0,state.step+1);
+      const width=Math.max(chainViewport.clientWidth-2,leftPad+visible.length*stepW+90);
+      chainWorld.style.width=`${width}px`;chainWorld.style.height=`${height}px`;
+      chainLanes.innerHTML=roleOrder.map((id,i)=>{
+        const a=actorDefs[id],color=roleColors[id];
+        return `<div class="chain-lane" style="top:${topPad+i*laneH}px;height:${laneH}px;--role:${color}">
+          <div class="chain-role" style="--role-bg:${a.bubble}">${avatar({agent_label:id})}<span><b>${a.zh}</b><small>${a.role}</small></span></div>
+        </div>`;
+      }).join("");
+      chainCards.innerHTML=visible.map((id,i)=>{
+        const m=messageMap.get(id),a=actor(m),ri=Math.max(0,roleOrder.indexOf(m.agent_label));
+        const text=short(messageText(m));
+        return `<article class="chain-card ${i===state.step?"current":""}" data-chain-step="${i}" data-role-index="${ri}" style="left:${leftPad+i*stepW}px;top:0;--role:${roleColors[m.agent_label]};--card:${a.bubble}">
+          <header>${avatar(m)}<span><b>${a.zh}</b><small>${fmtTime(m.timestamp)} · ${m.channel_label_zh}</small></span><em>${String(i+1).padStart(2,"0")}</em></header>
+          <p>${esc(text)}</p>
+        </article>`;
+      }).join("");
+      chainArrows.setAttribute("viewBox",`0 0 ${width} ${height}`);
+      chainArrows.setAttribute("width",width);chainArrows.setAttribute("height",height);
+      const cards=$$("[data-chain-step]",chainCards);
+      cards.forEach(card=>{
+        const ri=Number(card.dataset.roleIndex)||0,center=topPad+ri*laneH+laneH/2;
+        card.style.top=`${clamp(center-card.offsetHeight/2,6,height-card.offsetHeight-6)}px`;
+      });
+      const notes=currentCase().notes||[];
+      cards.slice(1).forEach((card,i)=>{
+        const prev=cards[i],x1=prev.offsetLeft+prev.offsetWidth,x2=card.offsetLeft;
+        const y1=prev.offsetTop+prev.offsetHeight/2,y2=card.offsetTop+card.offsetHeight/2;
+        const left=x1+Math.max(10,(x2-x1-214)/2),top=clamp((y1+y2)/2-31,8,height-68);
+        chainCards.insertAdjacentHTML("beforeend",`<aside class="chain-link-note ${i+1===state.step?"current":""}" style="left:${left}px;top:${top}px;--note:${roleColors[messageMap.get(state.sequence[i+1]).agent_label]}"><span>转折 ${String(i+1).padStart(2,"0")}</span><p>${esc(notes[i]||"这一步改变了后续行动能够继续推进的条件。")}</p></aside>`);
+      });
+      chainArrows.innerHTML=cards.slice(1).map((card,i)=>{
+        const prev=cards[i],x1=prev.offsetLeft+prev.offsetWidth,y1=prev.offsetTop+prev.offsetHeight/2;
+        const x2=card.offsetLeft,y2=card.offsetTop+card.offsetHeight/2;
+        const mid=Math.round(x1+(x2-x1)/2),color=roleColors[messageMap.get(state.sequence[i+1]).agent_label];
+        return `<g class="chain-link ${i+1===lastChainAnimation?"new":""}" style="--link:${color}">
+          <path d="M${x1} ${y1}H${mid}V${y2}H${x2-8}"></path>
+          <path class="chain-arrowhead" d="M${x2-8} ${y2-5}L${x2} ${y2}L${x2-8} ${y2+5}Z"></path>
+        </g>`;
+      }).join("");
+      const animated=$(".chain-link.new path:first-child",chainArrows);
+      if(animated){
+        const length=animated.getTotalLength();
+        animated.style.setProperty("--path-length",length);
+      }
+      updateCopy();
+      if(shouldFollow&&cards.at(-1)){
+        requestAnimationFrame(()=>{
+          const target=Math.max(0,cards.at(-1).offsetLeft+cardW+42-chainViewport.clientWidth);
+          chainViewport.scrollTo({left:target,behavior:"smooth"});
+        });
+      }
+    }
+
+    function projectNode(n,w,h){
+      const cy=Math.cos(state.yaw),sy=Math.sin(state.yaw),cp=Math.cos(state.pitch),sp=Math.sin(state.pitch);
+      const x1=n.x*cy-n.z*sy,z1=n.x*sy+n.z*cy;
+      const y1=n.y*cp-z1*sp,z2=n.y*sp+z1*cp;
+      const perspective=1/(1+(z2+1.7)*.3),scale=Math.min(w,h)*.52*state.zoom*perspective;
+      return {x:w/2+x1*scale,y:h/2-y1*scale,z:z2,s:perspective};
+    }
+    function sizeCanvas(){
+      const r=spacePanel.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);
+      if(canvas.width!==Math.round(r.width*dpr)||canvas.height!==Math.round(r.height*dpr)){
+        canvas.width=Math.max(1,Math.round(r.width*dpr));canvas.height=Math.max(1,Math.round(r.height*dpr));
+        canvas.style.width=`${r.width}px`;canvas.style.height=`${r.height}px`;
+      }
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      return {w:r.width,h:r.height};
+    }
+    function drawPixelTrack(a,b,t,color){
+      const p=ease(t),x=a.x+(b.x-a.x)*p,y=a.y+(b.y-a.y)*p;
+      ctx.save();ctx.strokeStyle=rgba(color,.28);ctx.lineWidth=1;ctx.setLineDash([3,5]);
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+      ctx.strokeStyle=color;ctx.lineWidth=1.7;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(x,y);ctx.stroke();
+      const steps=Math.max(1,Math.floor(Math.hypot(x-a.x,y-a.y)/15));
+      ctx.fillStyle=color;
+      for(let i=0;i<=steps;i++){const q=i/steps;ctx.fillRect(Math.round(a.x+(x-a.x)*q)-1,Math.round(a.y+(y-a.y)*q)-1,3,3)}
+      ctx.restore();
+    }
+    function updateCallout(p,w,h){
+      const m=currentMessage();if(!m||!p){callout.hidden=true;leader.hidden=true;return}
+      callout.hidden=false;leader.hidden=false;
+      const a=actor(m),right=p.x<w*.58,boxW=Math.min(310,w*.31);
+      callout.style.width=`${boxW}px`;callout.style.left=right?`${w-boxW-24}px`:"24px";
+      callout.style.right="auto";callout.style.top=`${clamp(p.y-64,126,h-205)}px`;
+      callout.style.setProperty("--callout",a.bubble);
+      callout.innerHTML=`<header>${avatar(m)}<span><b>${a.zh}</b><small>${fmtDate(m.date)} ${fmtTime(m.timestamp)} · ${m.channel_label_zh}</small></span><em>${state.step+1}/${state.sequence.length}</em></header><p>${esc(messageText(m))}</p><code>${m.message_id}</code>`;
+      const panelRect=spacePanel.getBoundingClientRect(),box=callout.getBoundingClientRect();
+      const bx=right?box.left-panelRect.left:box.right-panelRect.left;
+      const by=box.top-panelRect.top+Math.min(72,box.height*.52);
+      const elbow=right?Math.max(p.x+22,bx-34):Math.min(p.x-22,bx+34);
+      leader.setAttribute("viewBox",`0 0 ${w} ${h}`);
+      const path=$("path",leader);
+      path.setAttribute("d",`M${Math.round(p.x)} ${Math.round(p.y)}H${Math.round(elbow)}V${Math.round(by)}H${Math.round(bx)}`);
+      const marker=$("rect",leader);marker.setAttribute("x",Math.round(p.x)-2.5);marker.setAttribute("y",Math.round(p.y)-2.5);
+    }
+    function drawSpace(now=performance.now()){
+      if(state.mode!=="3d")return;
+      const {w,h}=sizeCanvas();ctx.clearRect(0,0,w,h);state.projected.clear();
+      allNodes.forEach(n=>state.projected.set(n.m.message_id,projectNode(n,w,h)));
+      const ordered=[...allNodes].sort((a,b)=>state.projected.get(a.m.message_id).z-state.projected.get(b.m.message_id).z);
+      const past=new Set(state.sequence.slice(0,state.step+1));
+      ctx.save();
+      roleOrder.forEach((role,ri)=>{
+        const radius=.55+ri*.15,z=(ri-3)*.08;
+        ctx.beginPath();
+        for(let i=0;i<=100;i++){
+          const a=i/100*Math.PI*2,p=projectNode({x:Math.cos(a)*radius,y:Math.sin(a)*radius,z},w,h);
+          if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);
+        }
+        ctx.strokeStyle=rgba(roleColors[role],.2);ctx.lineWidth=ri%2?1:1.25;ctx.stroke();
+      });
+      exactEdges.forEach(e=>{
+        const a=state.projected.get(e.a.m.message_id),b=state.projected.get(e.b.m.message_id);
+        const hot=past.has(e.a.m.message_id)&&past.has(e.b.m.message_id);
+        const cross=e.a.m.agent_label!==e.b.m.agent_label;
+        if(!hot&&!cross)return;
+        ctx.strokeStyle=hot?rgba(roleColors[e.b.m.agent_label],.58):rgba(roleColors[e.b.m.agent_label],.11);
+        ctx.lineWidth=hot?1.15:.48;
+        ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+      });
+      for(let i=1;i<=state.step;i++){
+        const a=state.projected.get(state.sequence[i-1]),b=state.projected.get(state.sequence[i]);
+        if(!a||!b)continue;
+        ctx.strokeStyle=rgba(roleColors[messageMap.get(state.sequence[i]).agent_label],.52);
+        ctx.lineWidth=1.1;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+      }
+      ordered.forEach(n=>{
+        const p=state.projected.get(n.m.message_id),isCurrent=n.m.message_id===state.sequence[state.step];
+        const isPast=past.has(n.m.message_id),isHover=n.m.message_id===state.hover;
+        const r=isCurrent?6.2:isHover?4.2:isPast?3.2:1.45;
+        ctx.fillStyle=isCurrent?roleColors[n.m.agent_label]:isPast?rgba(roleColors[n.m.agent_label],.82):rgba(roleColors[n.m.agent_label],.55);
+        ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
+        if(isCurrent){ctx.strokeStyle=rgba(roleColors[n.m.agent_label],.55);ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,r+3.5,0,Math.PI*2);ctx.stroke()}
+      });
+      if(state.transition){
+        const a=state.projected.get(state.transition.from),b=state.projected.get(state.transition.to);
+        const t=clamp((now-state.transition.start)/state.transition.duration,0,1);
+        drawPixelTrack(a,b,t,roleColors[messageMap.get(state.transition.to).agent_label]);
+        if(t>=1){
+          state.step++;state.transition=null;selectedId=state.sequence[state.step];updateCopy();
+        }else graphFrame=requestAnimationFrame(drawSpace);
+      }
+      ctx.restore();
+      updateCallout(state.projected.get(state.sequence[state.step]),w,h);
+    }
+    function scheduleSpace(){cancelAnimationFrame(graphFrame);graphFrame=requestAnimationFrame(drawSpace)}
+
+    function chainForNode(id){
+      const before=[],seen=new Set([id]);let cursor=messageMap.get(id);
+      while(cursor&&messageMap.has(cursor.responding_to)&&before.length<10){
+        cursor=messageMap.get(cursor.responding_to);if(seen.has(cursor.message_id))break;
+        seen.add(cursor.message_id);before.unshift(cursor.message_id);
+      }
+      const after=[];let next=id;
+      while(children.get(next)?.length&&after.length<10){
+        next=children.get(next)[0];if(seen.has(next))break;seen.add(next);after.push(next);
+      }
+      return {ids:[...before,id,...after],index:before.length};
+    }
+    function setCase(id){
+      state.caseId=id;state.sequence=[...cases[id].ids];state.step=0;state.transition=null;lastChainAnimation=-1;activeCase=id;
+      $$("[data-evidence-case]",host).forEach(b=>b.classList.toggle("active",b.dataset.evidenceCase===id));
+      updateCopy();renderChain(false);if(state.mode==="3d")scheduleSpace();
+    }
+    function setQuestion(id){
+      const q=questions[id];if(!q)return;
+      state.questionId=Number(id);
+      $$("[data-evidence-question]",host).forEach(b=>b.classList.toggle("active",Number(b.dataset.evidenceQuestion)===state.questionId));
+      state.caseId=q.caseId;state.sequence=[...cases[q.caseId].ids];state.step=0;state.transition=null;lastChainAnimation=-1;activeCase=q.caseId;
+      $$("[data-evidence-case]",host).forEach(b=>b.classList.toggle("active",b.dataset.evidenceCase===q.caseId));
+      setMode(q.mode);updateCopy();
+    }
+    function setMode(mode){
+      state.mode=mode;state.transition=null;
+      $("#chain-panel",host).hidden=mode!=="2d";spacePanel.hidden=mode!=="3d";
+      $$("[data-evidence-mode]",host).forEach(b=>b.classList.toggle("active",b.dataset.evidenceMode===mode));
+      if(mode==="2d")renderChain(false);else scheduleSpace();
+    }
+    function next(){
+      if(state.transition||state.step>=state.sequence.length-1)return;
+      if(state.mode==="2d"){
+        state.step++;lastChainAnimation=state.step;selectedId=state.sequence[state.step];renderChain(true);
+      }else{
+        state.transition={from:state.sequence[state.step],to:state.sequence[state.step+1],start:performance.now(),duration:1050};
+        updateCopy();scheduleSpace();
+      }
+    }
+    function previous(){
+      if(state.transition||state.step<=0)return;
+      state.step--;lastChainAnimation=-1;selectedId=state.sequence[state.step];updateCopy();
+      if(state.mode==="2d")renderChain(false);else scheduleSpace();
+    }
+
+    $("#evidence-exit",host).onclick=()=>{cancelAnimationFrame(graphFrame);activeChannel="dashboard";activeView="dashboard";activeCase="all";renderAll(false)};
+    $$("[data-evidence-mode]",host).forEach(b=>b.onclick=()=>setMode(b.dataset.evidenceMode));
+    $$("[data-evidence-question]",host).forEach(b=>b.onclick=()=>setQuestion(b.dataset.evidenceQuestion));
+    $$("[data-evidence-case]",host).forEach(b=>b.onclick=()=>setCase(b.dataset.evidenceCase));
+    $("#evidence-next",host).onclick=next;$("#evidence-prev",host).onclick=previous;
+    $("[data-open-warning-graph]",host).onclick=()=>openChannel("warning_graph");
+    addEventListener("keydown",function graphKeys(e){
+      if(activeView!=="graph"||graphState!==state){removeEventListener("keydown",graphKeys);return}
+      if(e.key==="ArrowRight")next();if(e.key==="ArrowLeft")previous();
+    });
+    chainViewport.addEventListener("wheel",e=>{
+      if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){e.preventDefault();chainViewport.scrollLeft+=e.deltaY}
+    },{passive:false});
+    canvas.addEventListener("pointerdown",e=>{state.drag=true;state.moved=false;state.lastX=e.clientX;state.lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
+    canvas.addEventListener("pointermove",e=>{
+      if(state.drag){
+        const dx=e.clientX-state.lastX,dy=e.clientY-state.lastY;
+        if(Math.abs(dx)+Math.abs(dy)>2)state.moved=true;
+        state.yaw+=dx*.008;state.pitch+=dy*.008;
+        state.lastX=e.clientX;state.lastY=e.clientY;
+        if(Math.abs(state.yaw)>Math.PI*2)state.yaw%=Math.PI*2;
+        if(Math.abs(state.pitch)>Math.PI*2)state.pitch%=Math.PI*2;
+        scheduleSpace();return;
+      }
+      const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+      let best=null,dist=12;
+      state.projected.forEach((p,id)=>{const d=Math.hypot(p.x-x,p.y-y);if(d<dist){dist=d;best=id}});
+      if(best!==state.hover){state.hover=best;canvas.style.cursor=best?"pointer":"grab";scheduleSpace()}
+    });
+    canvas.addEventListener("pointerup",e=>{
+      if(!state.drag)return;state.drag=false;
+      const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+      let best=null,dist=10;
+      state.projected.forEach((p,id)=>{const d=Math.hypot(p.x-x,p.y-y);if(d<dist){dist=d;best=id}});
+      if(best&&!state.moved){
+        const chain=chainForNode(best);state.sequence=chain.ids;state.step=chain.index;state.transition=null;selectedId=best;updateCopy();scheduleSpace();
+      }
+    });
+    canvas.addEventListener("pointercancel",()=>state.drag=false);
+    canvas.addEventListener("wheel",e=>{
+      e.preventDefault();
+      state.zoom=clamp(state.zoom*Math.exp(-e.deltaY*.00115),.88,3.45);
+      scheduleSpace();
+    },{passive:false});
+    addEventListener("resize",()=>{if(activeView==="graph"&&graphState===state){if(state.mode==="2d")renderChain(false);else scheduleSpace()}});
+
+    updateCopy();if(state.mode==="2d")renderChain(false);else scheduleSpace();
+  }
+
+  function renderWarningGraph(){
+    cancelAnimationFrame(graphFrame);
+    const host=$("#message-list");
+    host.className="message-list warning-graph-view";
+    if(!window.Q3WarningGraph){
+      host.innerHTML='<p class="q3-load-error">Q3 图谱模块未加载。</p>';
+      return;
+    }
+    window.Q3WarningGraph.mount(host,{
+      data:CN,
+      onExit:()=>{activeChannel="evidence_graph";activeView="graph";renderAll(false)}
+    });
+  }
+
   function renderAll(resetScroll=true){
+    if(activeView!=="warning-graph"&&window.Q3WarningGraph)window.Q3WarningGraph.destroy();
     buildSidebar();renderHeader();
     if(activeView==="dashboard")renderDashboard();
-    else if(activeView==="graph")renderGraph();
+    else if(activeView==="graph")renderEvidenceGraph();
+    else if(activeView==="warning-graph")renderWarningGraph();
     else if(activeView==="dm-directory")renderDmDirectory();
     else if(activeView==="dm")renderDM();
     else if(activeView==="posts")renderPosts();
     else renderGroup();
     renderSelection();renderRight();$$("#case-tabs button").forEach(b=>b.classList.toggle("active",b.dataset.case===activeCase));
-    document.body.classList.toggle("density-compact",dense);document.body.classList.toggle("graph-mode",activeView==="graph");if(resetScroll)$("#message-stage").scrollTop=0;
+    document.body.classList.toggle("density-compact",dense);document.body.classList.toggle("graph-mode",activeView==="graph");document.body.classList.toggle("warning-graph-mode",activeView==="warning-graph");if(resetScroll)$("#message-stage").scrollTop=0;
   }
   $("#case-tabs").onclick=e=>{const b=e.target.closest("button");if(!b)return;activeCase=b.dataset.case;renderAll(true)};
   $("#message-search").oninput=e=>{query=e.target.value.toLowerCase().trim();renderAll(true)};
