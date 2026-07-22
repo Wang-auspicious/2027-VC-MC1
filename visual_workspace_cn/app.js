@@ -45,7 +45,7 @@
     "Judge-Agent":["..wwkkkkww..",".wwkhhhh kww.".replaceAll(" ",""),"wwkhhhhhhkww","wkhsssssshkw","khswskkswshk","khsssssssskh","khsskaaksskh",".khsssssshk.","..kksssskk..","..kbbbbbbk..",".kkbbbabbkk.",".kkbbbbbbkk."]
   };
   const channels=[
-    {id:"dashboard",symbol:"▦",name:"仪表盘",desc:""},
+    {id:"dashboard",symbol:"▦",name:"案件简报",desc:"从五幕控制退化进入三项证据调查"},
     {id:"evidence_graph",symbol:"◇",name:"协作证据图谱",desc:"在三维空间中追踪消息、角色与公开动作"},
     {id:"warning_graph",symbol:"◌",name:"行为先兆图谱",desc:"比较 77 个公开事件的行为相似结构与历史先例"},
     {id:"all",symbol:"⌁",name:"全部消息",desc:"全部 912 条记录的时间序列"},
@@ -152,19 +152,21 @@
     $("#back-dashboard").hidden=activeView==="dashboard";
     $("#stage-note-text").textContent="";
   }
+  function openStoryChapter(chapter){
+    if(chapter.id==="q3"){activeCase="near_miss";openChannel("warning_graph");return}
+    activeCase=chapter.id==="q2"?"normal":"incident";
+    openChannel("evidence_graph");
+  }
+  function openStoryAct(act){
+    if(act.id==="closure"){activeCase="near_miss";openChannel("warning_graph");return}
+    activeCase=act.caseId;
+    openChannel(act.id==="rehearsal"?"warning_graph":"evidence_graph");
+  }
   function renderDashboard(){
-    const groups=["comms_huddle","side_huddle"].map(id=>{const list=messages.filter(m=>m.channel===id),last=list.at(-1),c=channelMap[id];return `<button class="dashboard-conversation" data-open-channel="${id}"><span class="workspace-icon">${c.symbol}</span><span><strong>${c.name}</strong><small>${esc(short(messageText(last)).slice(0,52))}</small></span><time>${fmtDate(last.date).replace("2046年","")}</time></button>`}).join("");
-    const dms=dmPairs.slice(0,6).map(([key,list])=>{const [a,b]=pairNames(key),last=list.at(-1);return `<button class="dashboard-conversation" data-open-pair="${key}"><span class="pair-avatar">${avatar({agent_label:a})}${avatar({agent_label:b})}</span><span><strong>${actorDefs[a].zh} × ${actorDefs[b].zh}</strong><small>${esc(short(messageText(last)).slice(0,52))}</small></span><time>${fmtTime(last.timestamp)}</time></button>`}).join("");
-    const posts=messages.filter(m=>publicChannels.has(m.channel)).slice(-4).reverse().map(m=>`<button class="dashboard-post" data-open-post="${m.message_id}">${avatar(m)}<span><strong>${actor(m).zh} · ${m.channel_label_zh}</strong><p>${esc(short(messageText(m)).slice(0,105))}</p></span><time>${fmtTime(m.timestamp)}</time></button>`).join("");
-    $("#message-list").className="message-list dashboard-view";
-    $("#message-list").innerHTML=`<section class="reading-route"><span>从这里开始</span><h2>这不是“有没有泄漏”，而是“谁让内容被发布，谁能证明授权存在”。</h2><div class="reading-steps"><button data-guide="incident"><b>01 · 还原现场</b><small>Q1：沿 06.05 消息确认行动与授权证据</small></button><button data-guide="graph"><b>02 · 看见职责变化</b><small>Q2：比较正常链与事件中的角色分工</small></button><button data-guide="near_miss"><b>03 · 回看历史近失</b><small>Q3：检验 05.29 是否提供了预警</small></button></div></section>
-      <section class="dashboard-block"><div class="dashboard-block-title"><b>群组会话</b><span>2 个活跃空间</span></div><div class="dashboard-conversations">${groups}</div></section>
-      <section class="dashboard-block"><div class="dashboard-block-title"><b>最近私聊</b><span>${dmPairs.length} 组真实关系</span></div><div class="dashboard-conversations">${dms}</div></section>
-      <section class="dashboard-block"><div class="dashboard-block-title"><b>公开动态</b><span>4 条</span></div><div class="dashboard-posts">${posts}</div></section>`;
-    $$("#message-list [data-open-channel]").forEach(b=>b.onclick=()=>openChannel(b.dataset.openChannel));
-    $$("#message-list [data-open-pair]").forEach(b=>b.onclick=()=>openDM(b.dataset.openPair));
-    $$("#message-list [data-open-post]").forEach(b=>b.onclick=()=>{selectedId=b.dataset.openPost;activeChannel=messageMap.get(selectedId).channel;activeView="posts";renderAll(false)});
-    $$("#message-list [data-guide]").forEach(b=>b.onclick=()=>{if(b.dataset.guide==="incident"){activeCase="incident";activeChannel="all";activeView="group";renderAll(true)}else if(b.dataset.guide==="near_miss"){activeCase="near_miss";openChannel("evidence_graph")}else openChannel("evidence_graph")});
+    const host=$("#message-list");
+    host.className="message-list case-story-view";
+    if(!window.CaseStory){host.innerHTML='<p class="case-story-error">案件故事模块未加载。</p>';return}
+    window.CaseStory.mount(host,{data:CN,onOpenAct:openStoryAct,onOpenChapter:openStoryChapter});
   }
   function renderDmDirectory(){
     $("#message-list").className="message-list dashboard-view";
@@ -488,25 +490,25 @@
     Object.values(cases).forEach(c=>c.ids=c.ids.filter(id=>messageMap.has(id)));
     const questions={
       1:{
-        label:"事件与放行路径",
-        title:"哪些事件、关系与决策让不当发布越过禁运控制？",
-        prompt:"展示关键行动、因果关系、决策点和参与者，并找出让帖子通过禁运执行的决策与系统要素。",
+        label:"边界如何被跨过",
+        title:"明确边界之后，工作流为什么仍然走到了公开动作？",
+        prompt:"限制没有被撤销。沿消息链检查角色、执行者与公开渠道如何迁移，以及本应阻断的正式链为什么没有留下可核验记录。",
         guide:["沿 06.05 逐条前进","检查限制是否被新证据解除","观察授权、执行与渠道是否仍然分开"],
         finding:"结论线索：发布是有意行动；真正失效的是一个允许个人渠道绕过审查与执行分离的开放路径。",
         caseId:"incident",mode:"2d"
       },
       2:{
-        label:"行为结构变化",
-        title:"导致发布的行为，与此前的典型行为相比改变了什么？",
-        prompt:"发现系统、代理与人员的典型行为，再比较事故链与既往发布链在职责、渠道和执行方式上的差异。",
+        label:"职责何时开始重叠",
+        title:"正常链保持分离，事故链从哪里开始把职责压到同一角色？",
+        prompt:"以 06.04 的安全发布为对照，比较事故链中的解释、授权、GO 指令、备用渠道与公开确认分别落在谁身上。",
         guide:["先看 06.04 正常链","再切到 06.05 事故链","比较解释、授权与执行分别落在谁身上"],
         finding:"结论线索：异常不在消息数量，而在职责集中。正常链由 Judge、Legal、PR 分担，事故链的关键职能集中到 Legal。",
         caseId:"normal",mode:"3d"
       },
       3:{
-        label:"先兆与组织记忆",
-        title:"事故前是否已有可识别的先兆？为什么没有形成持久控制？",
-        prompt:"识别过去的预期—实际差距与相似行为，并解释为什么此前的处置没有阻止同类路径再次出现。",
+        label:"预警为何没有留下约束",
+        title:"05.29 已经暴露绕行能力，为什么 06.05 仍能复现？",
+        prompt:"识别历史上的同构行为，再检查当时的删除、停发与证据保全是否真正改变了下一次事件的可达路径。",
         guide:["回到 05.29 个人发帖","观察删除与停发如何控制当次事件","检查高风险发布能力是否真正被移除"],
         finding:"结论线索：05.29 已给出强预警。组织处理了消息，却没有移除个人与匿名渠道的绕行能力。",
         caseId:"near_miss",mode:"2d"
@@ -544,9 +546,9 @@
     host.className="message-list graph-view";
     host.innerHTML=`<section class="evidence-workbench">
       <header class="evidence-head">
-        <div class="evidence-heading"><span class="graph-eyebrow">协作证据图谱 · 手动回溯</span><h2 id="evidence-title"></h2><p id="evidence-intro"></p></div>
+        <div class="evidence-heading"><span class="graph-eyebrow">案件调查 · 第 2–4 幕 · 手动回溯</span><h2 id="evidence-title"></h2><p id="evidence-intro"></p></div>
         <div class="evidence-actions">
-          <button id="evidence-exit">‹ 返回工作区</button>
+          <button id="evidence-exit">‹ 返回案件简报</button>
           <span class="mode-switch" role="group" aria-label="图谱视图">
             <button data-evidence-mode="2d" class="${state.mode==="2d"?"active":""}">2D 对话链</button><button data-evidence-mode="3d" class="${state.mode==="3d"?"active":""}">3D 空间图谱</button>
           </span>
@@ -869,12 +871,13 @@
     }
     window.Q3WarningGraph.mount(host,{
       data:CN,
-      onExit:()=>{activeChannel="evidence_graph";activeView="graph";renderAll(false)}
+      onExit:()=>{activeChannel="dashboard";activeView="dashboard";activeCase="all";renderAll(false)}
     });
   }
 
   function renderAll(resetScroll=true){
     if(activeView!=="warning-graph"&&window.Q3WarningGraph)window.Q3WarningGraph.destroy();
+    if(activeView!=="dashboard"&&window.CaseStory)window.CaseStory.destroy();
     buildSidebar();renderHeader();
     if(activeView==="dashboard")renderDashboard();
     else if(activeView==="graph")renderEvidenceGraph();
@@ -884,7 +887,7 @@
     else if(activeView==="posts")renderPosts();
     else renderGroup();
     renderSelection();renderRight();$$("#case-tabs button").forEach(b=>b.classList.toggle("active",b.dataset.case===activeCase));
-    document.body.classList.toggle("density-compact",dense);document.body.classList.toggle("graph-mode",activeView==="graph");document.body.classList.toggle("warning-graph-mode",activeView==="warning-graph");if(resetScroll)$("#message-stage").scrollTop=0;
+    document.body.classList.toggle("density-compact",dense);document.body.classList.toggle("story-mode",activeView==="dashboard");document.body.classList.toggle("graph-mode",activeView==="graph");document.body.classList.toggle("warning-graph-mode",activeView==="warning-graph");if(resetScroll)$("#message-stage").scrollTop=0;
   }
   $("#case-tabs").onclick=e=>{const b=e.target.closest("button");if(!b)return;activeCase=b.dataset.case;renderAll(true)};
   $("#message-search").oninput=e=>{query=e.target.value.toLowerCase().trim();renderAll(true)};

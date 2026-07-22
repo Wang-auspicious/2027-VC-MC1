@@ -93,22 +93,22 @@
     return `<section class="q3-shell" aria-label="Q3 行为先兆图谱">
       <header class="q3-head">
         <div class="q3-heading">
-          <span class="q3-kicker">Q3 · BEHAVIORAL PRECURSORS</span>
-          <h2>行为先兆图谱</h2>
-          <p>从 77 个已观测公开事件中寻找结构相似的历史先例，并检验当时的处置是否形成持久控制。</p>
+          <span class="q3-kicker">Q3 · ORGANIZATIONAL MEMORY</span>
+          <h2>预警为何没有留下约束</h2>
+          <p>05.29 与事故动作高度相似；真正的问题不是组织没有反应，而是处置没有改变下一次事件的可达路径。</p>
         </div>
         <div class="q3-head-actions">
           <span class="q3-mode-switch" role="group" aria-label="图谱投影">
             <button type="button" data-q3-mode="2d" class="active">2D</button>
             <button type="button" data-q3-mode="3d">3D</button>
           </span>
-          <button type="button" class="q3-exit">返回协作证据图谱</button>
+          <button type="button" class="q3-exit">返回案件简报</button>
         </div>
       </header>
       <div class="q3-workbench">
         <section class="q3-network-panel">
           <div class="q3-panel-title">
-            <div><b>事件行为相似网络</b><span>77 EVENTS · TOP-3 LOCAL LINKS</span></div>
+            <div><b>先找到历史上的同构行为</b><span>77 EVENTS · TOP-3 LOCAL LINKS</span></div>
             <div class="q3-legend">
               <i class="official"></i>官方 <i class="personal"></i>个人 <i class="anonymous"></i>匿名
             </div>
@@ -128,15 +128,15 @@
         </section>
         <aside class="q3-insights">
           <section class="q3-chart-card q3-radar-card">
-            <header><div><b>行为轮廓重叠</b><span>六维解释量 · 归一化 0–1</span></div><strong class="q3-radar-score">—</strong></header>
+            <header><div><b>第一步 · 像在哪里</b><span>六维行为轮廓叠加 · 归一化 0–1</span></div><strong class="q3-radar-score">—</strong></header>
             <div class="q3-radar"></div>
           </section>
           <section class="q3-chart-card q3-time-card">
-            <header><div><b>历史相似度坐标</b><span>横轴是真实时间 · 纵轴是与 A 的相似度</span></div><strong class="q3-rank">—</strong></header>
+            <header><div><b>第二步 · 何时已经出现</b><span>横轴是真实时间 · 纵轴是与事故 A 的相似度</span></div><strong class="q3-rank">—</strong></header>
             <div class="q3-timeline"></div>
           </section>
           <section class="q3-chart-card q3-control-card">
-            <header><div><b>控制覆盖与处置记忆</b><span>内圈：可阻断路径 · 外圈：事件后处置状态</span></div><strong class="q3-route-count">0 / 3</strong></header>
+            <header><div><b>第三步 · 为什么处置没有留下约束</b><span>内圈：可阻断路径 · 外圈：事件后处置状态</span></div><strong class="q3-route-count">0 / 3</strong></header>
             <div class="q3-control-layout"><div class="q3-controls"></div><div class="q3-control-copy"></div></div>
           </section>
         </aside>
