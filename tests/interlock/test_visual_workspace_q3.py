@@ -51,3 +51,12 @@ def test_workspace_routes_case_story_chapters_into_visual_investigations():
     assert "边界如何被跨过" in app
     assert "职责何时开始重叠" in app
     assert "预警为何没有留下约束" in app
+
+
+def test_workspace_opens_with_chat_and_appends_continuous_atlas():
+    html = INDEX.read_text(encoding="utf-8")
+    app = APP.read_text(encoding="utf-8")
+    assert 'id="evidence-atlas"' in html
+    assert 'id="atlas-entry"' in html
+    assert 'let activeChannel="comms_huddle",activeView="group"' in app
+    assert "window.WorkspaceBridge" in app

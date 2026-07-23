@@ -14,36 +14,16 @@ const assert = require('node:assert/strict');
   });
 
   await page.goto(`${base}/visual_workspace_cn/index.html`, { waitUntil: 'domcontentloaded' });
-  await page.locator('.case-story').waitFor();
-  assert.equal(await page.locator('.case-act').count(), 5);
-  assert.equal(await page.locator('.case-verdict').count(), 2);
-  assert.equal(await page.locator('.case-chapter').count(), 3);
-  assert.match(await page.locator('.case-story h1').textContent(), /为什么仍在最后一小时失去约束/);
-
-  await page.locator('[data-story-chapter="q1"]').click();
-  await page.locator('.evidence-workbench').waitFor();
-  assert.match(await page.locator('.evidence-questions .active').textContent(), /边界如何被跨过/);
-  await page.locator('[data-evidence-mode="3d"]').click();
-  assert.match(await page.locator('[data-evidence-mode="3d"]').getAttribute('class'), /active/);
-  await page.locator('#evidence-exit').click();
-  await page.locator('.case-story').waitFor();
-
-  await page.locator('[data-story-chapter="q2"]').click();
-  await page.locator('.evidence-workbench').waitFor();
-  assert.match(await page.locator('.evidence-questions .active').textContent(), /职责何时开始重叠/);
-  await page.locator('#evidence-exit').click();
-  await page.locator('.case-story').waitFor();
-
-  await page.locator('[data-story-chapter="q3"]').click();
-  await page.locator('.q3-shell').waitFor();
-  assert.equal(await page.locator('.q3-time-dot').count(), 77);
-  assert.match(await page.locator('.q3-score b').textContent(), /83%/);
-  await page.locator('.q3-exit').click();
-  await page.locator('.case-story').waitFor();
+  await page.locator('.message-row').first().waitFor();
+  assert.match(await page.locator('#current-channel-name').textContent(), /协作群聊/);
+  assert.equal(await page.locator('.case-verdict').count(), 0);
+  assert.equal(await page.locator('#evidence-atlas').count(), 1);
+  await page.evaluate(() => window.WorkspaceBridge.selectMessage('20460529_08_012'));
+  assert.match(await page.locator('.selection-id').textContent(), /20460529_08_012/);
 
   assert.deepEqual(errors, []);
   await browser.close();
-  console.log('Case story smoke test passed: five acts, dual verdicts, and Q1-Q3 visual routes stay connected.');
+  console.log('Opening chat smoke test passed: the workspace opens on real messages and exposes the atlas bridge.');
 })().catch(error => {
   console.error(error);
   process.exit(1);

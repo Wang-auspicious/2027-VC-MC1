@@ -57,7 +57,7 @@
     {id:"anonymous_post",symbol:"↗",name:"匿名发帖",desc:"匿名公开面上的动作"}
   ];
   const channelMap=Object.fromEntries(channels.map(c=>[c.id,c]));
-  let activeChannel="dashboard",activeView="dashboard",activePair="",activeCase="all",activeAgent="",query="",selectedId=CN.meta.default_action_id,dense=false;
+  let activeChannel="comms_huddle",activeView="group",activePair="",activeCase="all",activeAgent="",query="",selectedId=CN.meta.default_action_id,dense=false;
   let graphState=null,graphFrame=0;
 
   function messageText(m){
@@ -149,7 +149,7 @@
     if(activeView==="dm"&&activePair){const [a,b]=pairNames(activePair);title=`${actorDefs[a].zh} × ${actorDefs[b].zh}`;desc="";symbol="↔"}
     if(activeAgent){title=actorDefs[activeAgent].zh;desc="";symbol="@"}
     $("#current-channel-name").textContent=title;$("#current-channel-description").textContent=desc;$("#current-channel-symbol").textContent=symbol;
-    $("#back-dashboard").hidden=activeView==="dashboard";
+    $("#back-dashboard").hidden=activeView==="dashboard"||(activeView==="group"&&activeChannel==="comms_huddle"&&!activeAgent);
     $("#stage-note-text").textContent="";
   }
   function openStoryChapter(chapter){
@@ -894,7 +894,7 @@
   $("#search-focus").onclick=()=>$("#message-search").focus();
   addEventListener("keydown",e=>{if(e.key==="/"&&document.activeElement.tagName!=="INPUT"){e.preventDefault();$("#message-search").focus()}});
   $("#density-toggle").onclick=e=>{dense=!dense;e.currentTarget.innerHTML=`密度 <b>${dense?"紧凑":"舒适"}</b>`;renderAll(false)};
-  function clear(){activeChannel="dashboard";activeView="dashboard";activePair="";activeCase="all";activeAgent="";query="";$("#message-search").value="";renderAll(true)}
+  function clear(){activeChannel="comms_huddle";activeView="group";activePair="";activeCase="all";activeAgent="";query="";$("#message-search").value="";renderAll(true)}
   $("#clear-filters").onclick=clear;$("#empty-clear").onclick=clear;$("#back-dashboard").onclick=clear;
   $("#close-selection").onclick=()=>{selectedId="";renderSelection()};
   $("#channel-info").onclick=()=>{$("#stage-note-text").textContent="频道、私聊和公开帖子使用不同的阅读形态；所有内容仍对应同一份 912 条消息数据。"};
@@ -902,5 +902,18 @@
   $$("[data-close-profile]").forEach(b=>b.onclick=closeProfile);
   addEventListener("keydown",e=>{if(e.key==="Escape")closeProfile()});
   $$(".window-card [data-window]").forEach(b=>b.onclick=()=>{activeCase=b.dataset.window;activeChannel="all";activeView="group";activePair="";renderAll(true)});
+  window.WorkspaceBridge={
+    selectMessage(id){
+      if(!messageMap.has(id))throw new Error(`Unknown message: ${id}`);
+      selectedId=id;renderSelection();
+      window.dispatchEvent(new CustomEvent("workspace:message-selected",{detail:{id}}));
+    },
+    openMessage(id){
+      if(!messageMap.has(id))throw new Error(`Unknown message: ${id}`);
+      selectedId=id;activeChannel=messageMap.get(id).channel;
+      activeView=publicChannels.has(activeChannel)?"posts":"group";
+      renderAll(true);
+    }
+  };
   renderAll(true);
 })();
