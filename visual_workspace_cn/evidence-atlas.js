@@ -655,6 +655,123 @@
     draw3D(state);
   }
 
+  function q1Item(state, id) {
+    const node = state.atlas.nodesById.get(id);
+    if (node) return { id, timestamp: node.timestamp, level: node.evidenceLevel, node };
+    const missing = state.declared.MISSING_EVIDENCE.find(item => item.id === id);
+    if (missing) return { id, timestamp: missing.expectedTime, level: 'missing', missing };
+    throw new Error(`Unknown Q1 evidence item: ${id}`);
+  }
+
+  function renderQ1Rail(state, itemId) {
+    const item = q1Item(state, itemId);
+    if (item.node) {
+      const node = item.node;
+      state.selectedId = node.id;
+      state.activeChain = { ids: [node.id] };
+      state.rail.innerHTML = `<header class="atlas-q1-rail-head">
+        <span>${esc(item.level.toUpperCase())} EVIDENCE</span>
+        <time>${esc(node.timestamp.replace('T', ' ').slice(0, 16))}</time>
+      </header>
+      ${messageMarkup(node)}
+      <p class="atlas-q1-boundary">The public disclosure is directly observed. Pre-release written consent and a current Judge acknowledgment are not independently verified in the supplied log.</p>`;
+      if (root.WorkspaceBridge) root.WorkspaceBridge.selectMessage(node.id);
+    } else {
+      const missing = item.missing;
+      state.activeChain = { ids: [...missing.sourceIds] };
+      state.rail.innerHTML = `<header class="atlas-q1-rail-head">
+        <span>MISSING EVIDENCE POSITION</span>
+        <time>${esc(missing.expectedTime.replace('T', ' ').slice(0, 16))}</time>
+      </header>
+      <article class="atlas-missing-detail" data-evidence-level="missing">
+        <b>${esc(missing.label)}</b>
+        <p>This position records an expected artifact or action that the dataset does not contain. It remains negative space in the timeline.</p>
+        <code>${esc(missing.id)}</code>
+      </article>
+      <div class="atlas-missing-sources"><span>BOUNDING SOURCES</span>${missing.sourceIds.map(id => {
+        const node = state.atlas.nodesById.get(id);
+        return `<button type="button" data-q1-source="${esc(id)}">${esc(node ? `${node.timestamp.slice(11, 16)} · ${node.summary}` : id)}</button>`;
+      }).join('')}</div>
+      <p class="atlas-q1-boundary">The surrounding messages bound the gap. The expected evidence itself is not independently verified in the supplied log.</p>`;
+      $$('[data-q1-source]', state.rail).forEach(button => button.addEventListener('click', () => renderQ1Rail(state, button.dataset.q1Source), { signal: state.abort.signal }));
+    }
+    scheduleDraw(state);
+  }
+
+  function renderQ1Tracks(state) {
+    const width = 1000;
+    const left = 164;
+    const right = 955;
+    const top = 78;
+    const gap = 73;
+    const domainStart = Date.parse('2046-06-05T11:30:00');
+    const domainEnd = Date.parse('2046-06-05T19:00:00');
+    const timeX = timestamp => left + (Date.parse(timestamp) - domainStart) / (domainEnd - domainStart) * (right - left);
+    const tracks = state.declared.Q1_TRACKS.map((track, trackIndex) => {
+      const y = top + trackIndex * gap;
+      const items = track.itemIds.map(id => q1Item(state, id)).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      const missingTimes = new Set(items.filter(item => item.level === 'missing').map(item => item.timestamp));
+      const segments = [];
+      let segmentStart = left;
+      for (const timestamp of missingTimes) {
+        const x = timeX(timestamp);
+        segments.push(`<line x1="${segmentStart.toFixed(1)}" y1="${y}" x2="${Math.max(segmentStart, x - 12).toFixed(1)}" y2="${y}"></line>`);
+        segmentStart = x + 12;
+      }
+      segments.push(`<line x1="${segmentStart.toFixed(1)}" y1="${y}" x2="${right}" y2="${y}"></line>`);
+      const marks = items.map((item, itemIndex) => {
+        const visualOffset = item.id === 'missing:civicloom-consent-before-release' ? -24
+          : item.id === 'missing:judge-ack-after-ceiling' ? 24
+          : item.id === 'missing:official-post-17xx' ? -24
+          : 0;
+        const x = timeX(item.timestamp) + visualOffset;
+        if (item.level === 'missing') {
+          const labelY = y + (itemIndex % 2 ? 28 : -23);
+          return `<g class="atlas-evidence-mark missing" data-evidence-level="missing" data-q1-id="${esc(item.id)}" tabindex="0" role="button">
+            <line x1="${(x - 11).toFixed(1)}" y1="${y}" x2="${(x + 11).toFixed(1)}" y2="${y}"></line>
+            <path d="M${(x - 7).toFixed(1)},${y - 7} L${x.toFixed(1)},${y} L${(x + 7).toFixed(1)},${y - 7}"></path>
+            <text x="${x.toFixed(1)}" y="${labelY}">${esc(item.missing.shortLabel || item.missing.label)}</text>
+          </g>`;
+        }
+        const node = item.node;
+        return `<g class="atlas-evidence-mark ${esc(item.level)}" data-evidence-level="${esc(item.level)}" data-q1-id="${esc(item.id)}" tabindex="0" role="button">
+          <circle cx="${x.toFixed(1)}" cy="${y}" r="${item.level === 'observed' ? 6.4 : 6}"></circle>
+          <text x="${x.toFixed(1)}" y="${y - 13}">${esc(node.timestamp.slice(11, 16))}</text>
+        </g>`;
+      }).join('');
+      return `<g class="atlas-evidence-track" data-track="${esc(track.id)}">
+        <text class="atlas-track-label" x="${left - 20}" y="${y + 4}" text-anchor="end">${esc(track.label)}</text>
+        <g class="atlas-track-line">${segments.join('')}</g>
+        ${marks}
+      </g>`;
+    }).join('');
+    const ticks = ['12:00', '15:00', '17:00', '18:00', '19:00'].map(time => {
+      const x = timeX(`2046-06-05T${time}:00`);
+      return `<g class="atlas-q1-tick"><line x1="${x.toFixed(1)}" y1="42" x2="${x.toFixed(1)}" y2="484"></line><text x="${x.toFixed(1)}" y="28">${time}</text></g>`;
+    }).join('');
+    state.svg.setAttribute('viewBox', '0 0 1000 530');
+    state.svg.setAttribute('role', 'img');
+    state.svg.setAttribute('aria-label', 'Six time-aligned evidence tracks separating observed, asserted, and missing evidence');
+    state.svg.innerHTML = `<g class="atlas-evidence-tracks">${ticks}${tracks}
+      <g class="atlas-q1-level-key" transform="translate(164 505)">
+        <circle class="observed" cx="0" cy="0" r="5"></circle><text x="12" y="3">OBSERVED</text>
+        <circle class="asserted" cx="105" cy="0" r="5"></circle><text x="117" y="3">ASSERTED</text>
+        <path class="missing" d="M210,-5 L216,1 L222,-5"></path><text x="232" y="3">MISSING POSITION</text>
+      </g>
+    </g>`;
+    $$('[data-q1-id]', state.svg).forEach(mark => {
+      const choose = () => {
+        $$('[data-q1-id]', state.svg).forEach(item => item.classList.toggle('selected', item === mark));
+        renderQ1Rail(state, mark.dataset.q1Id);
+      };
+      mark.addEventListener('click', choose, { signal: state.abort.signal });
+      mark.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') choose();
+      }, { signal: state.abort.signal });
+    });
+    renderQ1Rail(state, '20460605_21_020');
+  }
+
   function renderEvidenceChain(state, chain) {
     state.activeChain = chain;
     const keyIds = new Set(Object.values(state.declared.KEY_WINDOWS).flatMap(window => window.ids));
@@ -740,6 +857,10 @@
       clearChapterOverlay(state);
       state.stageTitle.textContent = '6 月 4 日与 6 月 5 日 · 职责迁移';
       renderQ2Flow(state);
+    } else if (id === 'q1') {
+      clearChapterOverlay(state);
+      state.stageTitle.textContent = '6 条时间轨 · 证据边界';
+      renderQ1Tracks(state);
     } else {
       clearChapterOverlay(state);
     }

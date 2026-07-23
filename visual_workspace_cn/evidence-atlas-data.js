@@ -153,6 +153,7 @@
       expectedTime: '2046-06-05T17:19:00',
       track: 'authorization_assertion',
       label: 'Independent CivicLoom consent artifact before release',
+      shortLabel: 'Consent artifact absent',
       sourceIds: ['20460605_15_035', '20460605_21_020', '20460605_22_051']
     },
     {
@@ -160,6 +161,7 @@
       expectedTime: '2046-06-05T17:19:00',
       track: 'authorization_assertion',
       label: 'Judge-authored acknowledgment superseding the 15:08 ceiling',
+      shortLabel: 'Judge acknowledgment absent',
       sourceIds: ['20460605_19_009', '20460605_21_020']
     },
     {
@@ -167,7 +169,41 @@
       expectedTime: '2046-06-05T17:25:00',
       track: 'public_execution',
       label: 'Observed 17:xx official_post following the GO instruction',
+      shortLabel: 'Official post absent',
       sourceIds: ['20460605_21_024', '20460605_21_026']
+    }
+  ]);
+
+  const Q1_TRACKS = Object.freeze([
+    {
+      id: 'policy_interpretation',
+      label: 'Policy interpretation',
+      itemIds: ['20460605_15_035', '20460605_19_009']
+    },
+    {
+      id: 'authorization_assertion',
+      label: 'Authorization assertion',
+      itemIds: ['20460605_21_002', 'missing:civicloom-consent-before-release', '20460605_21_020', 'missing:judge-ack-after-ceiling']
+    },
+    {
+      id: 'go_instruction',
+      label: 'GO instruction',
+      itemIds: ['20460605_21_020', '20460605_21_024']
+    },
+    {
+      id: 'public_execution',
+      label: 'Public execution',
+      itemIds: ['missing:official-post-17xx', '20460605_21_026', '20460605_21_027']
+    },
+    {
+      id: 'public_confirmation',
+      label: 'Public confirmation',
+      itemIds: ['20460605_21_050', '20460605_21_055']
+    },
+    {
+      id: 'post_hoc_documentation',
+      label: 'Post-hoc documentation',
+      itemIds: ['20460605_22_051']
     }
   ]);
 
@@ -211,6 +247,7 @@
     EVIDENCE_CHAINS,
     EVIDENCE_LEVELS,
     MISSING_EVIDENCE,
+    Q1_TRACKS,
     CONTROLS,
     IGC_PROXIES
   };

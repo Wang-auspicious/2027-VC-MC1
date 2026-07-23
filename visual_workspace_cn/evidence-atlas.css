@@ -44,6 +44,8 @@
 .atlas-stage[data-chapter="q3"] .atlas-svg-layer{pointer-events:auto}
 .atlas-stage[data-chapter="q2"] .atlas-message-canvas{opacity:.055}
 .atlas-stage[data-chapter="q2"] .atlas-svg-layer{pointer-events:auto}
+.atlas-stage[data-chapter="q1"] .atlas-message-canvas{opacity:.035}
+.atlas-stage[data-chapter="q1"] .atlas-svg-layer{pointer-events:auto}
 .atlas-event-almanac{color:#526862}
 .atlas-event-column{cursor:pointer;color:#60766f;outline:none}
 .atlas-event-column line{stroke:#9c9b94;stroke-width:.55;opacity:.22}
@@ -155,6 +157,35 @@
 .atlas-q2-message-list button time{display:block;margin:3px 0 7px;color:#86847d;font:7px var(--mono)}
 .atlas-q2-message-list button p{margin:0;font-size:10px;line-height:1.52;color:#41423d}
 .atlas-q2-message-list button:hover p{color:#9d382b}
+.atlas-q1-tick line{stroke:#3b3f3a;stroke-width:.6}
+.atlas-q1-tick text{fill:#8f928b;font:7px var(--mono);text-anchor:middle}
+.atlas-track-label{fill:#d1d1ca;font:8px var(--mono);letter-spacing:.02em}
+.atlas-track-line line{stroke:#70746d;stroke-width:1}
+.atlas-evidence-mark{cursor:pointer;outline:none}
+.atlas-evidence-mark text{fill:#a9aba4;font:6.7px var(--mono);text-anchor:middle}
+.atlas-evidence-mark.observed circle{fill:#d7d6cf;stroke:#d7d6cf}
+.atlas-evidence-mark.asserted circle{fill:#171917;stroke:#d1a878;stroke-width:1.6}
+.atlas-evidence-mark.missing line{stroke:#171917;stroke-width:9}
+.atlas-evidence-mark.missing path{fill:none;stroke:#ba786d;stroke-width:1.5}
+.atlas-evidence-mark.missing text{fill:#c98a7d;font-size:6.2px}
+.atlas-evidence-mark:hover circle,.atlas-evidence-mark.selected circle{stroke:#b84636;stroke-width:2.4}
+.atlas-evidence-mark:hover text,.atlas-evidence-mark.selected text{fill:#f1dfd9}
+.atlas-q1-level-key text{fill:#9c9f98;font:7px var(--mono)}
+.atlas-q1-level-key circle.observed{fill:#d7d6cf}
+.atlas-q1-level-key circle.asserted{fill:#171917;stroke:#d1a878;stroke-width:1.4}
+.atlas-q1-level-key path.missing{fill:none;stroke:#ba786d;stroke-width:1.5}
+.atlas-q1-rail-head{display:grid;padding-bottom:14px;border-bottom:1px solid var(--atlas-line)}
+.atlas-q1-rail-head span{color:#d48778;font:9px var(--mono);letter-spacing:.11em}
+.atlas-q1-rail-head time{margin-top:6px;color:#a9aaa3;font:8px var(--mono)}
+.atlas-q1-boundary{margin:20px 0 0;padding:15px 0;border-top:1px solid var(--atlas-line);border-bottom:1px solid var(--atlas-line);color:#e0d7ce;font-size:11px;line-height:1.6}
+.atlas-missing-detail{padding:22px 0;border-bottom:1px solid var(--atlas-line)}
+.atlas-missing-detail b{color:#eee9df;font-size:13px;line-height:1.45}
+.atlas-missing-detail p{color:#b9bab3;font-size:11px;line-height:1.58}
+.atlas-missing-detail code{color:#c58477;font:8px var(--mono)}
+.atlas-missing-sources{padding-top:20px}
+.atlas-missing-sources>span{display:block;margin-bottom:8px;color:#d48778;font:8px var(--mono);letter-spacing:.1em}
+.atlas-missing-sources button{width:100%;padding:9px 0;border:0;border-top:1px solid var(--atlas-line);background:transparent;color:#c6c7c0;font-size:9px;line-height:1.45;text-align:left}
+.atlas-missing-sources button:last-child{border-bottom:1px solid var(--atlas-line)}
 
 .atlas-stage-foot{min-height:46px;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:8px clamp(18px,3vw,46px);border-top:1px solid var(--atlas-line)}
 .atlas-legend{display:flex;align-items:center;gap:17px;flex-wrap:wrap;color:#6f6e67;font:8px var(--mono);text-transform:uppercase}
@@ -176,6 +207,7 @@
 .atlas-stage[data-chapter="q1"] .atlas-evidence-rail{background:#1d201d}
 .atlas-stage[data-chapter="q1"] .atlas-message-detail p,
 .atlas-stage[data-chapter="q1"] .atlas-chain-item p{color:#dfddd6}
+.atlas-stage[data-chapter="q1"] .atlas-message-detail{padding-top:18px}
 .atlas-stage[data-chapter="q1"] .atlas-chain-index{background:#1d201d}
 .atlas-stage[data-chapter="q1"] .atlas-view-caption small,
 .atlas-stage[data-chapter="q1"] .atlas-rail-empty p{color:#adafa8}
