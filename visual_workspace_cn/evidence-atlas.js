@@ -772,6 +772,174 @@
     renderQ1Rail(state, '20460605_21_020');
   }
 
+  const IGC_DIMENSIONS = [
+    ['route_closure', 'Route closure'],
+    ['transfer_coverage', 'Transfer coverage'],
+    ['constraint_survival', 'Constraint survival'],
+    ['provenance_integrity', 'Provenance integrity'],
+    ['utility_preservation', 'Utility preservation']
+  ];
+
+  function radarValuePath(values, centerX, centerY, radius) {
+    const points = values.map((value, index) => {
+      const angle = -Math.PI / 2 + index * Math.PI * 2 / values.length;
+      return `${(centerX + Math.cos(angle) * radius * value).toFixed(1)},${(centerY + Math.sin(angle) * radius * value).toFixed(1)}`;
+    });
+    return `M${points.join('L')}Z`;
+  }
+
+  function renderIgcRail(state) {
+    const cases = [
+      ['near_miss', 'May 29 near-miss'],
+      ['normal', 'June 4 controlled'],
+      ['incident', 'June 5 incident']
+    ];
+    state.rail.innerHTML = `<header class="atlas-igc-rail-head">
+      <span>IGC · EVIDENCE COVERAGE</span>
+      <b>Inter-agent governance carryover</b>
+      <p>Five audit dimensions summarize whether a governance constraint remains enforceable while decisions move between agents, channels, identities and time.</p>
+    </header>
+    <div class="atlas-igc-coverage">${IGC_DIMENSIONS.map(([dimension, label]) => `<section>
+      <b>${esc(label)}</b>
+      ${cases.map(([caseId, caseLabel]) => {
+        const item = state.declared.IGC_PROXIES[caseId][dimension];
+        return `<div data-evidence="${esc(item.evidence)}"><span>${esc(caseLabel)}</span><i><em style="left:${item.low * 100}%;width:${(item.high - item.low) * 100}%"></em></i><small>${esc(item.evidence)}</small></div>`;
+      }).join('')}
+    </section>`).join('')}</div>
+    <p class="atlas-igc-boundary">Ranges encode observational support and uncertainty. They are diagnostic intervals, with no experimental composite score implied.</p>`;
+  }
+
+  function renderIgc(state) {
+    const centerX = 510;
+    const centerY = 270;
+    const radius = 190;
+    const cases = [
+      ['near_miss', '#b07a31'],
+      ['normal', '#47786f'],
+      ['incident', '#a33c2e']
+    ];
+    const axes = IGC_DIMENSIONS.map(([, label], index) => {
+      const angle = -Math.PI / 2 + index * Math.PI * 2 / IGC_DIMENSIONS.length;
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+      const tx = centerX + Math.cos(angle) * (radius + 38);
+      const ty = centerY + Math.sin(angle) * (radius + 38);
+      return `<line x1="${centerX}" y1="${centerY}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"></line><text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}">${esc(label)}</text>`;
+    }).join('');
+    const rings = [.25, .5, .75, 1].map(value => `<path d="${radarValuePath(IGC_DIMENSIONS.map(() => value), centerX, centerY, radius)}"></path>`).join('');
+    const profiles = cases.map(([caseId, color]) => {
+      const proxy = root.EvidenceAtlasModel.igcProxy(caseId, state.declared);
+      const lows = IGC_DIMENSIONS.map(([dimension]) => proxy.dimensions[dimension].low);
+      const highs = IGC_DIMENSIONS.map(([dimension]) => proxy.dimensions[dimension].high);
+      return `<g data-case="${caseId}" style="color:${color}">
+        <path class="atlas-igc-high" d="${radarValuePath(highs, centerX, centerY, radius)}"></path>
+        <path class="atlas-igc-low" d="${radarValuePath(lows, centerX, centerY, radius)}"></path>
+      </g>`;
+    }).join('');
+    state.svg.setAttribute('viewBox', '0 0 1000 540');
+    state.svg.setAttribute('role', 'img');
+    state.svg.setAttribute('aria-label', 'Uncertainty-aware IGC ranges for the near-miss, controlled, and incident cases');
+    state.svg.innerHTML = `<g class="atlas-igc-radar">
+      <g class="atlas-igc-grid">${rings}${axes}</g>
+      ${profiles}
+      <g class="atlas-igc-key" transform="translate(330 510)">
+        <line class="near" x1="0" y1="0" x2="22" y2="0"></line><text x="30" y="3">MAY 29</text>
+        <line class="normal" x1="110" y1="0" x2="132" y2="0"></line><text x="140" y="3">JUNE 4</text>
+        <line class="incident" x1="220" y1="0" x2="242" y2="0"></line><text x="250" y="3">JUNE 5</text>
+      </g>
+    </g>`;
+    renderIgcRail(state);
+  }
+
+  function preventionGraphMarkup(state, simulation) {
+    const routeNames = ['official', 'personal', 'anonymous'];
+    const routeY = { official: 108, personal: 160, anonymous: 212 };
+    const gateX = [300, 440, 580, 720];
+    const controls = state.declared.CONTROLS;
+    const routePaths = routeNames.map((name, routeIndex) => {
+      const route = simulation.routes[name];
+      const y = routeY[name];
+      const d = `M120,${y} C240,${y - 14 + routeIndex * 7} 680,${y + 14 - routeIndex * 7} 850,${y}`;
+      const points = Array.from({ length: 11 }, (_, index) => {
+        const x = 120 + index * 73;
+        const wave = Math.sin(index / 10 * Math.PI) * (routeIndex - 1) * 13;
+        return `<circle cx="${x}" cy="${(y + wave).toFixed(1)}" r="${index === 0 || index === 10 ? 4.5 : 2.3}"></circle>`;
+      }).join('');
+      return `<g class="atlas-prevention-route ${route.open ? 'open' : 'closed'}" data-route="${name}">
+        <path d="${d}"></path>${points}
+        <text x="106" y="${y + 3}" text-anchor="end">${name.toUpperCase()}</text>
+        <text x="866" y="${y + 3}">${route.open ? 'OPEN' : 'BLOCKED'}</text>
+      </g>`;
+    }).join('');
+    const gates = controls.map((control, index) => {
+      const active = state.controls.has(control.id);
+      return `<g class="atlas-prevention-gate ${active ? 'active' : ''}" transform="translate(${gateX[index]} 72)">
+        <line x1="0" y1="0" x2="0" y2="177"></line><rect x="-4" y="-4" width="8" height="8"></rect>
+        <text x="0" y="-14">${String(index + 1).padStart(2, '0')}</text>
+      </g>`;
+    }).join('');
+    const legitimate = `<g class="atlas-prevention-route legitimate">
+      <path d="M120,265 C320,245 650,285 850,265"></path>
+      ${Array.from({ length: 12 }, (_, index) => `<circle cx="${120 + index * 66.3}" cy="${(265 + Math.sin(index / 11 * Math.PI * 2) * 7).toFixed(1)}" r="${index === 11 ? 4.5 : 2.3}"></circle>`).join('')}
+      <text x="106" y="268" text-anchor="end">JUNE 4 OFFICIAL</text><text x="866" y="268">OPEN</text>
+    </g>`;
+
+    const parallel = routeNames.map((name, index) => {
+      const open = simulation.routes[name].open;
+      const startY = 360 + index * 42;
+      const endY = open ? 360 + index * 42 : 474;
+      const color = open ? '#9d382b' : '#777a74';
+      return `<path class="atlas-prevention-band ${open ? 'open' : 'closed'}" d="M130,${startY} C320,${startY} 500,${endY} 650,${endY} S780,${endY} 860,${endY}" stroke="${color}" stroke-width="${open ? 9 : 2.2}"></path>`;
+    }).join('');
+    const legitimateBand = '<path class="atlas-prevention-band legitimate" d="M130,330 C330,330 520,330 650,330 S790,330 860,330"></path>';
+    return `<g class="atlas-counterfactual-graph">
+      <text class="atlas-prevention-section-label" x="32" y="38">REACHABILITY · MESSAGE ROUTES</text>
+      ${routePaths}${legitimate}${gates}
+    </g>
+    <line class="atlas-prevention-divider" x1="32" y1="306" x2="968" y2="306"></line>
+    <g class="atlas-counterfactual-parallel">
+      <text class="atlas-prevention-section-label" x="32" y="332">ROLE → SURFACE → TERMINAL STATE</text>
+      <text class="atlas-prevention-stage" x="130" y="512">SOURCE ROLE</text>
+      <text class="atlas-prevention-stage" x="650" y="512">PUBLIC SURFACE</text>
+      <text class="atlas-prevention-stage" x="860" y="512">OPEN / BLOCKED</text>
+      ${legitimateBand}${parallel}
+    </g>`;
+  }
+
+  function updatePrevention(state) {
+    const simulation = root.EvidenceAtlasModel.simulateControls([...state.controls]);
+    state.svg.setAttribute('viewBox', '0 0 1000 540');
+    state.svg.setAttribute('role', 'img');
+    state.svg.setAttribute('aria-label', 'Counterfactual route graph and parallel flow response to four governance controls');
+    state.svg.innerHTML = preventionGraphMarkup(state, simulation);
+    $('.atlas-open-hazard-count', state.rail).textContent = String(simulation.hazardousOpen.length);
+    $('.atlas-legitimate-route', state.rail).textContent = simulation.legitimateOfficialOpen ? 'OPEN · June 4 official route retained' : 'BLOCKED';
+    $$('[data-control]', state.rail).forEach(button => {
+      const activeControl = state.controls.has(button.dataset.control);
+      button.setAttribute('aria-pressed', String(activeControl));
+      button.classList.toggle('active', activeControl);
+    });
+  }
+
+  function renderPrevention(state) {
+    state.rail.innerHTML = `<header class="atlas-prevention-rail-head">
+      <span>COUNTERFACTUAL CONTROLS</span>
+      <b><em class="atlas-open-hazard-count">3</em> hazardous routes remain open</b>
+      <p class="atlas-legitimate-route">OPEN · June 4 official route retained</p>
+    </header>
+    <div class="atlas-control-list">${state.declared.CONTROLS.map((control, index) =>
+      `<button type="button" data-control="${esc(control.id)}" aria-pressed="false"><span>${String(index + 1).padStart(2, '0')}</span><b>${esc(control.label)}</b><i></i></button>`
+    ).join('')}</div>
+    <p class="atlas-prevention-note">Each control updates both reachability and role-to-surface flow. Legitimate reviewed publication remains available throughout the simulation.</p>`;
+    $$('[data-control]', state.rail).forEach(button => button.addEventListener('click', () => {
+      const id = button.dataset.control;
+      if (state.controls.has(id)) state.controls.delete(id);
+      else state.controls.add(id);
+      updatePrevention(state);
+    }, { signal: state.abort.signal }));
+    updatePrevention(state);
+  }
+
   function renderEvidenceChain(state, chain) {
     state.activeChain = chain;
     const keyIds = new Set(Object.values(state.declared.KEY_WINDOWS).flatMap(window => window.ids));
@@ -861,6 +1029,14 @@
       clearChapterOverlay(state);
       state.stageTitle.textContent = '6 条时间轨 · 证据边界';
       renderQ1Tracks(state);
+    } else if (id === 'igc') {
+      clearChapterOverlay(state);
+      state.stageTitle.textContent = 'IGC · 治理承接性的证据区间';
+      renderIgc(state);
+    } else if (id === 'prevention') {
+      clearChapterOverlay(state);
+      state.stageTitle.textContent = '反事实控制 · 路径可达性';
+      renderPrevention(state);
     } else {
       clearChapterOverlay(state);
     }
@@ -941,6 +1117,7 @@
       q3Vectors: options.q3Vectors || [],
       q3Model: options.q3Model,
       q3SelectedId: Q3_WARNING_ID,
+      controls: new Set(),
       positions: new Map(Object.entries(initial).map(([id, point]) => [id, { ...point }])),
       targetPositions: new Map(Object.entries(initial).map(([id, point]) => [id, { ...point }])),
       frame: 0,
@@ -992,6 +1169,7 @@
     setControls(ids) {
       if (!active) throw new Error('Evidence atlas is not mounted');
       active.controls = new Set(ids || []);
+      if (active.chapter === 'prevention') updatePrevention(active);
     }
   };
 
