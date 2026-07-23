@@ -726,7 +726,9 @@
           : 0;
         const x = timeX(item.timestamp) + visualOffset;
         if (item.level === 'missing') {
-          const labelY = y + (itemIndex % 2 ? 28 : -23);
+          const labelY = item.id === 'missing:judge-ack-after-ceiling' ? y - 23
+            : item.id === 'missing:official-post-17xx' ? y - 23
+            : y + 28;
           return `<g class="atlas-evidence-mark missing" data-evidence-level="missing" data-q1-id="${esc(item.id)}" tabindex="0" role="button">
             <line x1="${(x - 11).toFixed(1)}" y1="${y}" x2="${(x + 11).toFixed(1)}" y2="${y}"></line>
             <path d="M${(x - 7).toFixed(1)},${y - 7} L${x.toFixed(1)},${y} L${(x + 7).toFixed(1)},${y - 7}"></path>
@@ -753,7 +755,7 @@
     state.svg.setAttribute('role', 'img');
     state.svg.setAttribute('aria-label', 'Six time-aligned evidence tracks separating observed, asserted, and missing evidence');
     state.svg.innerHTML = `<g class="atlas-evidence-tracks">${ticks}${tracks}
-      <g class="atlas-q1-level-key" transform="translate(164 505)">
+      <g class="atlas-q1-level-key" transform="translate(620 505)">
         <circle class="observed" cx="0" cy="0" r="5"></circle><text x="12" y="3">OBSERVED</text>
         <circle class="asserted" cx="105" cy="0" r="5"></circle><text x="117" y="3">ASSERTED</text>
         <path class="missing" d="M210,-5 L216,1 L222,-5"></path><text x="232" y="3">MISSING POSITION</text>
