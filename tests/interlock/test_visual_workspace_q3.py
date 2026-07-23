@@ -60,3 +60,12 @@ def test_workspace_opens_with_chat_and_appends_continuous_atlas():
     assert 'id="atlas-entry"' in html
     assert 'let activeChannel="comms_huddle",activeView="group"' in app
     assert "window.WorkspaceBridge" in app
+
+
+def test_atlas_assets_load_in_dependency_order():
+    html = INDEX.read_text(encoding="utf-8")
+    assert 'href="evidence-atlas.css"' in html
+    assert html.index('src="message-summaries.js"') < html.index('src="evidence-atlas-data.js"')
+    assert html.index('src="evidence-atlas-data.js"') < html.index('src="evidence-atlas-model.js"')
+    assert html.index('src="evidence-atlas-model.js"') < html.index('src="evidence-atlas.js"')
+    assert html.index('src="evidence-atlas.js"') < html.index('src="app.js"')

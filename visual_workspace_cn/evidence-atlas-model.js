@@ -244,15 +244,19 @@
     const positions = {};
     const roles = [...new Set(nodes.map(node => node.role))].sort();
     const channels = [...new Set(nodes.map(node => node.channel))].sort();
+    const sequence = new Map(nodes.map((node, index) => [node.id, index / Math.max(1, nodes.length - 1)]));
     for (const node of nodes) {
       const hash = stableHash(node.id);
       if (mode === 'time') {
         const roleIndex = Math.max(0, roles.indexOf(node.role));
-        const baseY = 0.10 + (roleIndex / Math.max(1, roles.length - 1)) * 0.80;
-        const emphasis = node.window === 'background' ? 0 : (node.window === 'near_miss' ? -0.018 : node.window === 'normal' ? 0 : 0.018);
+        const elapsed = normalizedTime(nodes, node);
+        const chronologicalRank = sequence.get(node.id);
+        const roleDrift = (roleIndex / Math.max(1, roles.length - 1) - 0.5) * 0.18;
+        const cloudJitter = (((hash >>> 8) % 1000) / 1000 - 0.5) * 0.60;
+        const wave = Math.sin(chronologicalRank * Math.PI * 7 + (hash % 17) * 0.07) * 0.075;
         positions[node.id] = {
-          x: clamp(0.04 + normalizedTime(nodes, node) * 0.92),
-          y: clamp(baseY + (((hash >>> 8) % 1000) / 1000 - 0.5) * 0.055 + emphasis)
+          x: clamp(0.04 + (elapsed * 0.30 + chronologicalRank * 0.70) * 0.92),
+          y: clamp(0.50 + roleDrift + cloudJitter + wave)
         };
         continue;
       }
