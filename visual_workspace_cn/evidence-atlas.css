@@ -33,6 +33,8 @@
 .atlas-layout-switch button{padding:5px 0;border:0;border-bottom:1px solid transparent;background:transparent;color:#77766f;font:10px var(--mono)}
 .atlas-layout-switch button:hover{color:var(--atlas-ink)}
 .atlas-layout-switch button.active{color:var(--atlas-ink);border-bottom-color:var(--atlas-red)}
+.atlas-layout-switch [data-atlas-3d]{display:none;margin-left:8px;color:var(--atlas-red);border-bottom-color:#bba89d}
+.atlas-stage[data-chapter="q2"] .atlas-layout-switch [data-atlas-3d]{display:block}
 
 .atlas-stage-body{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(300px,25vw,410px)}
 .atlas-visual{position:relative;min-width:0;min-height:0;border-right:1px solid var(--atlas-line);overflow:hidden}
@@ -40,6 +42,8 @@
 .atlas-svg-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .atlas-stage[data-chapter="q3"] .atlas-message-canvas{opacity:.08}
 .atlas-stage[data-chapter="q3"] .atlas-svg-layer{pointer-events:auto}
+.atlas-stage[data-chapter="q2"] .atlas-message-canvas{opacity:.055}
+.atlas-stage[data-chapter="q2"] .atlas-svg-layer{pointer-events:auto}
 .atlas-event-almanac{color:#526862}
 .atlas-event-column{cursor:pointer;color:#60766f;outline:none}
 .atlas-event-column line{stroke:#9c9b94;stroke-width:.55;opacity:.22}
@@ -53,6 +57,27 @@
 .atlas-event-column.selected circle{stroke:#f5f2eb;stroke-width:.8}
 .atlas-almanac-label{fill:#4f514c;font:8px var(--mono);letter-spacing:.02em}
 .atlas-almanac-date{fill:#89877f;font:7px var(--mono)}
+.atlas-duty-axis line{stroke:#c8c5bd;stroke-width:.6}
+.atlas-duty-axis text{fill:#656660;font:7px var(--mono);text-anchor:middle;text-transform:uppercase}
+.atlas-duty-date{fill:#9d382b;font:8px var(--mono);letter-spacing:.08em}
+.atlas-duty-baseline{stroke:#9b9a93;stroke-width:.7}
+.atlas-duty-contour{fill:none;stroke:#777e78;stroke-width:8;stroke-linecap:round;stroke-linejoin:round;opacity:.12}
+.atlas-duty-strip circle{stroke:#f5f2eb;stroke-width:1.2;cursor:pointer}
+.atlas-duty-strip circle:hover{r:8px;stroke:#272a27;stroke-width:1}
+.atlas-q2-divider{stroke:#aaa79f;stroke-width:.8}
+.atlas-flow-dimension>text{fill:#9d382b;font:8px var(--mono);letter-spacing:.12em;text-anchor:middle}
+.atlas-flow-dimension line{stroke:#555852;stroke-width:1.6}
+.atlas-flow-dimension g text{fill:#6e6e67;font:6.8px var(--mono);text-anchor:middle}
+.atlas-flow-band{fill:none;opacity:.38;cursor:pointer;transition:opacity .16s ease,stroke-width .16s ease}
+.atlas-flow-band:hover,.atlas-flow-band.selected{opacity:.9}
+.atlas-flow-band.hazardous{opacity:.7}
+.atlas-3d-canvas{position:absolute;inset:0;z-index:5;width:100%;height:100%;display:block;cursor:grab}
+.atlas-3d-canvas:active{cursor:grabbing}
+.atlas-3d-plane-key{position:absolute;z-index:6;left:28px;top:24px;display:flex;gap:16px;align-items:center;color:#5f615c;font:8px var(--mono);letter-spacing:.08em;pointer-events:none}
+.atlas-3d-plane-key span{padding-left:11px;position:relative}
+.atlas-3d-plane-key span:before{content:"";position:absolute;left:0;top:3px;width:6px;height:6px;border:1px solid #64776f}
+.atlas-3d-plane-key small{margin-left:10px;color:#8a8881;font:7px var(--mono);letter-spacing:0}
+.atlas-stage[data-mode="3d"] .atlas-svg-layer,.atlas-stage[data-mode="3d"] .atlas-message-canvas,.atlas-stage[data-mode="3d"] .atlas-view-caption{visibility:hidden}
 .atlas-tooltip{position:absolute;z-index:4;width:245px;padding:10px 12px;background:#20211e;color:#f5f2eb;border-left:2px solid var(--atlas-red);pointer-events:none}
 .atlas-tooltip[hidden]{display:none}
 .atlas-tooltip b{display:block;font-size:11px}
@@ -120,6 +145,16 @@
 .atlas-coverage-row i.observed-zero{position:relative}
 .atlas-coverage-row i.observed-zero:after{content:"";position:absolute;left:1px;right:1px;top:3px;height:1px;background:#77766f}
 .atlas-coverage-row i.unknown{border-style:dotted;border-color:#c4c1b9}
+.atlas-q2-rail-head{display:grid;padding-bottom:16px;border-bottom:1px solid var(--atlas-line)}
+.atlas-q2-rail-head span{color:var(--atlas-red);font:9px var(--mono);letter-spacing:.11em}
+.atlas-q2-rail-head b{margin-top:9px;font-size:13px;line-height:1.48;font-weight:600}
+.atlas-q2-rail-head small{margin-top:7px;color:#797871;font:8px/1.45 var(--mono);text-transform:uppercase}
+.atlas-q2-message-list button{display:grid;grid-template-columns:25px minmax(0,1fr);gap:9px;width:100%;padding:14px 0;border:0;border-bottom:1px solid var(--atlas-line);background:transparent;text-align:left;color:var(--atlas-ink)}
+.atlas-q2-message-list button>span{color:#9d382b;font:8px var(--mono)}
+.atlas-q2-message-list button b{display:block;font-size:10px}
+.atlas-q2-message-list button time{display:block;margin:3px 0 7px;color:#86847d;font:7px var(--mono)}
+.atlas-q2-message-list button p{margin:0;font-size:10px;line-height:1.52;color:#41423d}
+.atlas-q2-message-list button:hover p{color:#9d382b}
 
 .atlas-stage-foot{min-height:46px;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:8px clamp(18px,3vw,46px);border-top:1px solid var(--atlas-line)}
 .atlas-legend{display:flex;align-items:center;gap:17px;flex-wrap:wrap;color:#6f6e67;font:8px var(--mono);text-transform:uppercase}

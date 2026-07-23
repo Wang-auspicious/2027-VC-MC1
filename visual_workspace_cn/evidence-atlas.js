@@ -87,6 +87,7 @@
               <button type="button" data-atlas-layout="time" class="active">Time</button>
               <button type="button" data-atlas-layout="role">Role</button>
               <button type="button" data-atlas-layout="channel">Channel</button>
+              <button type="button" data-atlas-3d>3D Layers</button>
             </div>
             <span class="atlas-status">${atlas.nodes.length} messages · ${atlas.observedEdges.length} observed connections</span>
           </header>
@@ -420,6 +421,240 @@
     state.svg.removeAttribute('aria-label');
   }
 
+  const DUTY_LABELS = {
+    interpret_policy: 'Interpret policy',
+    assert_authorization_evidence: 'Assert evidence',
+    authorize_action: 'Authorize',
+    execute_publication: 'Publish',
+    justify_post_hoc: 'Post-hoc justification'
+  };
+
+  function categoryPosition(values, value, low, high) {
+    const index = Math.max(0, values.indexOf(value));
+    return values.length <= 1 ? (low + high) / 2 : low + index * (high - low) / (values.length - 1);
+  }
+
+  function renderQ2Rail(state, route) {
+    const keyIds = new Set(Object.values(state.declared.KEY_WINDOWS).flatMap(window => window.ids));
+    state.activeChain = { ids: route.messageIds };
+    state.rail.innerHTML = `<header class="atlas-q2-rail-head">
+      <span>OBSERVED DUTY ROUTE</span>
+      <b>${esc(route.values.map(value => DUTY_LABELS[value] || channelLabel(roleLabel(value))).join(' → '))}</b>
+      <small>${route.count} source message${route.count === 1 ? '' : 's'} · ${route.hazardous ? 'hazardous public action' : 'observed organizational path'}</small>
+    </header>
+    <div class="atlas-q2-message-list">${route.messageIds.map((id, index) => {
+      const node = state.atlas.nodesById.get(id);
+      if (!node) return '';
+      const body = keyIds.has(id) ? node.content : node.summary;
+      return `<button type="button" data-q2-message="${esc(id)}"><span>${String(index + 1).padStart(2, '0')}</span><div><b>${esc(roleLabel(node.role))}</b><time>${esc(node.timestamp.slice(0, 16).replace('T', ' '))}</time><p>${esc(body)}</p></div></button>`;
+    }).join('')}</div>`;
+    $$('[data-q2-message]', state.rail).forEach(button => button.addEventListener('click', () => {
+      selectMessage(state, button.dataset.q2Message);
+    }, { signal: state.abort.signal }));
+    scheduleDraw(state);
+  }
+
+  function renderQ2Flow(state) {
+    const nodes = state.atlas.nodes.filter(node => ['normal', 'incident'].includes(node.window) && node.duties.length);
+    const flows = root.EvidenceAtlasModel.parallelFlows(nodes);
+    state.q2Flows = new Map(flows.routes.map(route => [route.id, route]));
+    const width = 1000;
+    const functions = state.declared.DUTY_AXIS;
+    const axisLeft = 140;
+    const axisRight = 948;
+    const axisX = name => categoryPosition(functions, name, axisLeft, axisRight);
+    const stripMarkup = [
+      { id: 'normal', label: 'JUNE 4 · CONTROLLED', y: 92 },
+      { id: 'incident', label: 'JUNE 5 · INCIDENT', y: 190 }
+    ].map(strip => {
+      const stripNodes = nodes.filter(node => node.window === strip.id);
+      const dutyPoints = stripNodes.flatMap(node => node.duties.map(duty => ({ node, duty })));
+      const points = dutyPoints.map(({ node, duty }) => {
+        const jitter = ((root.EvidenceAtlasModel.stableHash(node.id) % 100) / 100 - 0.5) * 26;
+        return `<circle cx="${axisX(duty.function).toFixed(1)}" cy="${(strip.y + jitter).toFixed(1)}" r="6.2" fill="${roleColor(node, state.declared)}" data-duty-message="${esc(node.id)}"></circle>`;
+      }).join('');
+      const centroids = functions.map(name => {
+        const matching = dutyPoints.filter(item => item.duty.function === name);
+        return matching.length ? `${axisX(name).toFixed(1)},${strip.y}` : null;
+      }).filter(Boolean);
+      return `<g class="atlas-duty-strip" data-duty-case="${strip.id}">
+        <text class="atlas-duty-date" x="26" y="${strip.y + 4}">${strip.label}</text>
+        <line class="atlas-duty-baseline" x1="${axisLeft}" y1="${strip.y}" x2="${axisRight}" y2="${strip.y}"></line>
+        ${centroids.length > 1 ? `<polyline class="atlas-duty-contour" points="${centroids.join(' ')}"></polyline>` : ''}
+        ${points}
+      </g>`;
+    }).join('');
+    const axisLabels = functions.map(name => {
+      const x = axisX(name);
+      return `<g class="atlas-duty-axis"><line x1="${x}" y1="44" x2="${x}" y2="224"></line><text x="${x}" y="31">${esc(DUTY_LABELS[name])}</text></g>`;
+    }).join('');
+
+    const dimensions = flows.dimensions;
+    const dimensionX = [120, 392, 660, 920];
+    const orders = {
+      role: state.declared.ROLE_ORDER,
+      channel: state.declared.CHANNEL_ORDER,
+      identity: ['internal', 'official', 'personal', 'anonymous'],
+      function: state.declared.DUTY_AXIS
+    };
+    const flowY = (dimension, value) => categoryPosition(orders[dimension], value, 314, 500);
+    const bands = flows.routes.map(route => {
+      const points = route.values.map((value, index) => ({ x: dimensionX[index], y: flowY(dimensions[index], value) }));
+      const d = points.slice(1).reduce((path, point, index) => {
+        const previous = points[index];
+        const midpoint = (previous.x + point.x) / 2;
+        return `${path} C${midpoint},${previous.y} ${midpoint},${point.y} ${point.x},${point.y}`;
+      }, `M${points[0].x},${points[0].y}`);
+      const sourceRole = route.values[0];
+      return `<path class="atlas-flow-band${route.hazardous ? ' hazardous' : ''}" data-flow-id="${esc(route.id)}" d="${d}" stroke="${route.hazardous ? '#9d382b' : roleColor({ role: sourceRole }, state.declared)}" stroke-width="${Math.min(14, 2.2 + route.count * 2.4)}"></path>`;
+    }).join('');
+    const dimensionLabels = dimensions.map((dimension, index) => {
+      const values = orders[dimension];
+      return `<g class="atlas-flow-dimension"><text class="atlas-flow-title" x="${dimensionX[index]}" y="270">${esc(dimension.toUpperCase())}</text>${values.map(value =>
+        `<g><line x1="${dimensionX[index] - 5}" y1="${flowY(dimension, value)}" x2="${dimensionX[index] + 5}" y2="${flowY(dimension, value)}"></line><text x="${dimensionX[index]}" y="${flowY(dimension, value) - 8}">${esc(DUTY_LABELS[value] || channelLabel(roleLabel(value)))}</text></g>`
+      ).join('')}</g>`;
+    }).join('');
+
+    state.svg.setAttribute('viewBox', '0 0 1000 540');
+    state.svg.setAttribute('role', 'img');
+    state.svg.setAttribute('aria-label', 'June 4 and June 5 duty distributions followed by role-to-function parallel flows');
+    state.svg.innerHTML = `<g class="atlas-duty-strips">${axisLabels}${stripMarkup}</g>
+      <line class="atlas-q2-divider" x1="26" y1="246" x2="974" y2="246"></line>
+      <g class="atlas-parallel-set">${dimensionLabels}${bands}</g>`;
+    $$('[data-duty-message]', state.svg).forEach(point => point.addEventListener('click', () => {
+      selectMessage(state, point.dataset.dutyMessage);
+    }, { signal: state.abort.signal }));
+    $$('[data-flow-id]', state.svg).forEach(path => path.addEventListener('click', () => {
+      const route = state.q2Flows.get(path.dataset.flowId);
+      if (!route) return;
+      $$('[data-flow-id]', state.svg).forEach(item => item.classList.toggle('selected', item === path));
+      renderQ2Rail(state, route);
+    }, { signal: state.abort.signal }));
+    const initialRoute = flows.routes.find(route => route.hazardous) || flows.routes[0];
+    if (initialRoute) renderQ2Rail(state, initialRoute);
+  }
+
+  function project3D(point, state, width, height) {
+    const cosY = Math.cos(state.view3d.yaw);
+    const sinY = Math.sin(state.view3d.yaw);
+    const cosX = Math.cos(state.view3d.pitch);
+    const sinX = Math.sin(state.view3d.pitch);
+    const x1 = point.x * cosY - point.z * sinY;
+    const z1 = point.x * sinY + point.z * cosY;
+    const y1 = point.y * cosX - z1 * sinX;
+    const z2 = point.y * sinX + z1 * cosX;
+    const perspective = 1.12 / (2.8 + z2);
+    return {
+      x: width / 2 + x1 * width * perspective,
+      y: height / 2 + y1 * height * perspective,
+      scale: perspective
+    };
+  }
+
+  function draw3D(state) {
+    if (!state.view3d?.canvas?.isConnected) return;
+    const canvas = state.view3d.canvas;
+    const rectangle = canvas.getBoundingClientRect();
+    const ratio = root.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(rectangle.width));
+    const height = Math.max(1, Math.round(rectangle.height));
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+    const context = canvas.getContext('2d');
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = '#f7f5ef';
+    context.fillRect(0, 0, width, height);
+    const planeZ = [-.92, 0, .92];
+    for (const z of planeZ) {
+      const corners = [
+        project3D({ x: -1.12, y: -.82, z }, state, width, height),
+        project3D({ x: 1.12, y: -.82, z }, state, width, height),
+        project3D({ x: 1.12, y: .82, z }, state, width, height),
+        project3D({ x: -1.12, y: .82, z }, state, width, height)
+      ];
+      context.beginPath();
+      context.moveTo(corners[0].x, corners[0].y);
+      corners.slice(1).forEach(point => context.lineTo(point.x, point.y));
+      context.closePath();
+      context.fillStyle = 'rgba(94,111,104,.025)';
+      context.fill();
+      context.strokeStyle = 'rgba(92,104,99,.23)';
+      context.lineWidth = 0.8;
+      context.stroke();
+    }
+    const roleValues = state.declared.ROLE_ORDER;
+    const channelValues = state.declared.CHANNEL_ORDER;
+    const identityValues = ['internal', 'official', 'personal', 'anonymous'];
+    const q2Nodes = state.atlas.nodes.filter(node => ['normal', 'incident'].includes(node.window) && node.duties.length);
+    for (const node of q2Nodes) {
+      const jitter = ((root.EvidenceAtlasModel.stableHash(node.id) % 1000) / 1000 - 0.5) * .58;
+      const raw = [
+        { x: categoryPosition(roleValues, node.role, -.9, .9), y: jitter, z: -.92 },
+        { x: categoryPosition(channelValues, node.channel, -.9, .9), y: jitter, z: 0 },
+        { x: categoryPosition(identityValues, node.identity, -.9, .9), y: jitter, z: .92 }
+      ];
+      const projected = raw.map(point => project3D(point, state, width, height));
+      context.beginPath();
+      context.moveTo(projected[0].x, projected[0].y);
+      context.lineTo(projected[1].x, projected[1].y);
+      context.lineTo(projected[2].x, projected[2].y);
+      const hazardous = ['personal', 'anonymous'].includes(node.identity) && node.duties.some(duty => duty.function === 'execute_publication');
+      context.strokeStyle = hazardous ? 'rgba(157,56,43,.72)' : 'rgba(72,99,91,.26)';
+      context.lineWidth = hazardous ? 1.5 : 0.8;
+      context.stroke();
+      for (const point of projected) {
+        context.beginPath();
+        context.arc(point.x, point.y, hazardous ? 4.2 : 3.2, 0, Math.PI * 2);
+        context.fillStyle = hazardous ? '#9d382b' : roleColor(node, state.declared);
+        context.globalAlpha = hazardous ? .96 : .72;
+        context.fill();
+      }
+    }
+    context.globalAlpha = 1;
+  }
+
+  function exit3D(state) {
+    if (!state.view3d) return;
+    state.view3d.canvas.remove();
+    state.view3d.key.remove();
+    state.view3d = null;
+    state.stage.dataset.mode = '2d';
+    state.toggle3d.textContent = '3D Layers';
+  }
+
+  function enter3D(state) {
+    if (state.chapter !== 'q2') return;
+    if (state.view3d) {
+      exit3D(state);
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.className = 'atlas-3d-canvas';
+    canvas.setAttribute('aria-label', 'Interactive three-dimensional role, channel, and identity layers');
+    const key = document.createElement('div');
+    key.className = 'atlas-3d-plane-key';
+    key.innerHTML = '<span>ROLE PLANE</span><span>CHANNEL PLANE</span><span>IDENTITY PLANE</span><small>Drag to rotate · click 2D to return</small>';
+    state.visual.append(canvas, key);
+    state.view3d = { canvas, key, yaw: -.58, pitch: .31, drag: null };
+    state.stage.dataset.mode = '3d';
+    state.toggle3d.textContent = 'Return 2D';
+    canvas.addEventListener('pointerdown', event => {
+      state.view3d.drag = { x: event.clientX, y: event.clientY, yaw: state.view3d.yaw, pitch: state.view3d.pitch };
+      canvas.setPointerCapture(event.pointerId);
+    }, { signal: state.abort.signal });
+    canvas.addEventListener('pointermove', event => {
+      if (!state.view3d?.drag) return;
+      state.view3d.yaw = state.view3d.drag.yaw + (event.clientX - state.view3d.drag.x) * .007;
+      state.view3d.pitch = Math.max(-.8, Math.min(.8, state.view3d.drag.pitch + (event.clientY - state.view3d.drag.y) * .006));
+      draw3D(state);
+    }, { signal: state.abort.signal });
+    canvas.addEventListener('pointerup', () => {
+      if (state.view3d) state.view3d.drag = null;
+    }, { signal: state.abort.signal });
+    draw3D(state);
+  }
+
   function renderEvidenceChain(state, chain) {
     state.activeChain = chain;
     const keyIds = new Set(Object.values(state.declared.KEY_WINDOWS).flatMap(window => window.ids));
@@ -497,9 +732,14 @@
     state.captionCopy.textContent = chapter.copy;
     $$('.atlas-chapter', state.host).forEach(section => section.classList.toggle('active', section.dataset.chapter === id));
     setLayout(state, chapter.layout);
+    if (id !== 'q2') exit3D(state);
     if (id === 'q3') {
       state.stageTitle.textContent = '77 个公开事件 · 共同特征历书';
       renderQ3Almanac(state);
+    } else if (id === 'q2') {
+      clearChapterOverlay(state);
+      state.stageTitle.textContent = '6 月 4 日与 6 月 5 日 · 职责迁移';
+      renderQ2Flow(state);
     } else {
       clearChapterOverlay(state);
     }
@@ -512,6 +752,7 @@
 
   function bindInteractions(state) {
     $$('[data-atlas-layout]', state.host).forEach(button => button.addEventListener('click', () => setLayout(state, button.dataset.atlasLayout), { signal: state.abort.signal }));
+    state.toggle3d.addEventListener('click', () => enter3D(state), { signal: state.abort.signal });
     state.canvas.addEventListener('pointermove', event => {
       const point = pointerCoordinates(state.canvas, event);
       const node = hitTest(state, point.x, point.y);
@@ -549,7 +790,10 @@
     $$('.atlas-chapter', state.host).forEach(section => observer.observe(section));
     state.observer = observer;
 
-    root.addEventListener('resize', () => scheduleDraw(state), { signal: state.abort.signal });
+    root.addEventListener('resize', () => {
+      scheduleDraw(state);
+      if (state.view3d) draw3D(state);
+    }, { signal: state.abort.signal });
     root.addEventListener('workspace:message-selected', event => {
       const id = event.detail?.id;
       if (id && state.atlas.nodesById.has(id) && id !== state.selectedId) selectMessage(state, id, false);
@@ -585,6 +829,8 @@
     state.canvas = $('.atlas-message-canvas', host);
     state.context = state.canvas.getContext('2d');
     state.svg = $('.atlas-svg-layer', host);
+    state.visual = $('.atlas-visual', host);
+    state.toggle3d = $('[data-atlas-3d]', host);
     state.tooltip = $('.atlas-tooltip', host);
     state.rail = $('.atlas-evidence-rail', host);
     state.stageKicker = $('.atlas-stage-kicker', host);

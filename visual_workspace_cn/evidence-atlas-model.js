@@ -275,6 +275,49 @@
     return positions;
   }
 
+  function parallelFlows(nodes, dimensions = ['role', 'channel', 'identity', 'function']) {
+    const supported = new Set(['role', 'channel', 'identity', 'function']);
+    for (const dimension of dimensions) {
+      if (!supported.has(dimension)) throw new Error(`Unknown parallel flow dimension: ${dimension}`);
+    }
+    const aggregated = new Map();
+    for (const node of nodes) {
+      for (const duty of node.duties || []) {
+        const record = {
+          role: node.role,
+          channel: node.channel,
+          identity: node.identity,
+          function: duty.function
+        };
+        const values = dimensions.map(dimension => record[dimension]);
+        const key = values.join('\u001f');
+        if (!aggregated.has(key)) {
+          aggregated.set(key, {
+            id: `flow:${stableHash(key).toString(16)}`,
+            values,
+            messageIds: new Set(),
+            caseIds: new Set(),
+            hazardous: ['personal', 'anonymous'].includes(record.identity) && duty.function === 'execute_publication'
+          });
+        }
+        const route = aggregated.get(key);
+        route.messageIds.add(node.id);
+        route.caseIds.add(duty.caseId);
+      }
+    }
+    const routes = [...aggregated.values()].map(route => ({
+      ...route,
+      messageIds: [...route.messageIds].sort(),
+      caseIds: [...route.caseIds].sort(),
+      count: route.messageIds.size
+    })).sort((left, right) => right.count - left.count || left.values.join('|').localeCompare(right.values.join('|')));
+    return {
+      dimensions: [...dimensions],
+      routes,
+      totalMessages: new Set(routes.flatMap(route => route.messageIds)).size
+    };
+  }
+
   function chainsFor(messageId, declared) {
     const order = ['authorization', 'migration', 'public_action'];
     const chains = declared.EVIDENCE_CHAINS
@@ -335,6 +378,7 @@
     buildObservedEdges,
     buildAnalyticalEdges,
     layout,
+    parallelFlows,
     chainsFor,
     simulateControls,
     igcProxy,

@@ -66,3 +66,13 @@ test('observational evidence never becomes an exact experimental score', () => {
     assert.ok(['observed', 'partial', 'unobserved'].includes(item.evidence));
   });
 });
+
+test('parallel flows retain observed message ids across four declared dimensions', () => {
+  const atlas = model.buildAtlas(cn, en, summaries.SUMMARIES, declared);
+  const flows = model.parallelFlows(atlas.nodes.filter(node => ['normal', 'incident'].includes(node.window)));
+  assert.deepEqual(flows.dimensions, ['role', 'channel', 'identity', 'function']);
+  assert.ok(flows.routes.length >= 6);
+  assert.ok(flows.routes.every(route => route.messageIds.length === route.count));
+  assert.ok(flows.routes.some(route => route.hazardous && route.values.at(-1) === 'execute_publication'));
+  assert.ok(flows.routes.some(route => !route.hazardous && route.values.includes('official')));
+});
