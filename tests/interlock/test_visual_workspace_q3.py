@@ -17,13 +17,13 @@ def test_q3_assets_are_loaded_before_the_workspace_app():
     assert html.index('src="q3-warning-graph.js"') < html.index('src="app.js"')
 
 
-def test_workspace_routes_to_a_dedicated_warning_graph_view():
+def test_workspace_keeps_legacy_graphs_out_of_the_visible_channel_list():
     app = APP.read_text(encoding="utf-8")
-    assert '{id:"warning_graph"' in app
-    assert 'id==="warning_graph"?"warning-graph"' in app
-    assert 'activeView==="warning-graph"' in app
-    assert 'Q3WarningGraph.mount' in app
-    assert 'data-open-warning-graph' in app
+    channel_block = app.split("const channels=[", 1)[1].split("];", 1)[0]
+    assert '{id:"warning_graph"' not in channel_block
+    assert '{id:"evidence_graph"' not in channel_block
+    assert '{id:"dashboard"' not in channel_block
+    assert '{id:"comms_huddle"' in channel_block
 
 
 def test_warning_graph_exposes_mount_and_destroy_lifecycle():
@@ -42,15 +42,14 @@ def test_case_story_is_loaded_before_the_workspace_app():
     assert STORY_STYLE.exists()
 
 
-def test_workspace_routes_case_story_chapters_into_visual_investigations():
+def test_retired_case_story_has_no_active_render_route():
     app = APP.read_text(encoding="utf-8")
-    assert "CaseStory.mount" in app
-    assert 'classList.toggle("story-mode"' in app
-    assert 'chapter.id==="q3"' in app
-    assert 'act.id==="closure"' in app
-    assert "边界如何被跨过" in app
-    assert "职责何时开始重叠" in app
-    assert "预警为何没有留下约束" in app
+    story = STORY.read_text(encoding="utf-8")
+    assert "CaseStory.mount" not in app
+    assert 'classList.toggle("story-mode"' not in app
+    assert "function mount(" not in story
+    assert "function validateStory(" in story
+    assert "function destroy()" in story
 
 
 def test_workspace_opens_with_chat_and_appends_continuous_atlas():
@@ -69,3 +68,17 @@ def test_atlas_assets_load_in_dependency_order():
     assert html.index('src="evidence-atlas-data.js"') < html.index('src="evidence-atlas-model.js"')
     assert html.index('src="evidence-atlas-model.js"') < html.index('src="evidence-atlas.js"')
     assert html.index('src="evidence-atlas.js"') < html.index('src="app.js"')
+
+
+def test_active_workspace_avoids_retired_card_story_and_prohibited_copy():
+    sources = [
+        INDEX.read_text(encoding="utf-8"),
+        APP.read_text(encoding="utf-8"),
+        (ROOT / "visual_workspace_cn" / "evidence-atlas.js").read_text(encoding="utf-8"),
+        (ROOT / "visual_workspace_cn" / "evidence-atlas.css").read_text(encoding="utf-8"),
+        STORY.read_text(encoding="utf-8"),
+    ]
+    combined = "\n".join(sources)
+    assert "case-story-verdicts" not in combined
+    assert "case-chapter-grid" not in combined
+    assert not __import__("re").search(r"\u4e0d\u662f.{0,40}\u800c\u662f", combined)

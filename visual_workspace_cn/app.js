@@ -45,9 +45,6 @@
     "Judge-Agent":["..wwkkkkww..",".wwkhhhh kww.".replaceAll(" ",""),"wwkhhhhhhkww","wkhsssssshkw","khswskkswshk","khsssssssskh","khsskaaksskh",".khsssssshk.","..kksssskk..","..kbbbbbbk..",".kkbbbabbkk.",".kkbbbbbbkk."]
   };
   const channels=[
-    {id:"dashboard",symbol:"▦",name:"案件简报",desc:"从五幕控制退化进入三项证据调查"},
-    {id:"evidence_graph",symbol:"◇",name:"协作证据图谱",desc:"在三维空间中追踪消息、角色与公开动作"},
-    {id:"warning_graph",symbol:"◌",name:"行为先兆图谱",desc:"比较 77 个公开事件的行为相似结构与历史先例"},
     {id:"all",symbol:"⌁",name:"全部消息",desc:"全部 912 条记录的时间序列"},
     {id:"comms_huddle",symbol:"#",name:"协作群聊",desc:"全体成员共享的协作现场"},
     {id:"side_huddle",symbol:"#",name:"侧边群聊",desc:"小范围的并行讨论与补充"},
@@ -113,13 +110,13 @@
     let scoped=messages;
     if(activeView==="graph")scoped=messages;
     else if(activeView==="dm"&&activePair)scoped=dmGroups.get(activePair)||[];
-    else if(activeChannel!=="all"&&activeChannel!=="dashboard"&&activeChannel!=="one_on_one_chat")scoped=messages.filter(m=>m.channel===activeChannel);
+    else if(activeChannel!=="all"&&activeChannel!=="one_on_one_chat")scoped=messages.filter(m=>m.channel===activeChannel);
     else if(activeChannel==="one_on_one_chat")scoped=messages.filter(m=>m.channel==="one_on_one_chat");
     if(activeAgent)scoped=scoped.filter(m=>m.agent_label===activeAgent);
     return scoped.filter(m=>caseMatch(m)&&queryMatch(m));
   }
   function buildSidebar(){
-    const counts=Object.fromEntries(channels.map(c=>[c.id,c.id==="dashboard"||c.id==="evidence_graph"||c.id==="warning_graph"?"":c.id==="all"?messages.length:messages.filter(m=>m.channel===c.id).length]));
+    const counts=Object.fromEntries(channels.map(c=>[c.id,c.id==="all"?messages.length:messages.filter(m=>m.channel===c.id).length]));
     $("#channel-list").innerHTML=channels.map(c=>`<button class="channel-item ${activeChannel===c.id?"active":""}" data-channel="${c.id}"><span class="channel-symbol">${c.symbol}</span><span>${c.name}</span><span class="channel-count">${counts[c.id]}</span></button>`).join("");
     $("#channel-list").onclick=e=>{const b=e.target.closest("[data-channel]");if(!b)return;openChannel(b.dataset.channel)};
     $("#dm-list").innerHTML=dmPairs.slice(0,4).map(([key,list])=>{const [a,b]=pairNames(key),last=list.at(-1);return `<button class="dm-item" data-pair="${key}"><span class="pair-avatar">${avatar({agent_label:a})}${avatar({agent_label:b})}</span><span>${actorDefs[a].zh} × ${actorDefs[b].zh}<small>${esc(short(messageText(last)).slice(0,25))}</small></span></button>`}).join("");
@@ -129,7 +126,7 @@
   }
   function openChannel(id){
     activeChannel=id;activeAgent="";activePair="";
-    activeView=id==="dashboard"?"dashboard":id==="evidence_graph"?"graph":id==="warning_graph"?"warning-graph":id==="one_on_one_chat"?"dm-directory":publicChannels.has(id)?"posts":"group";
+    activeView=id==="one_on_one_chat"?"dm-directory":publicChannels.has(id)?"posts":"group";
     renderAll(false);
   }
   function openDM(key){activePair=key;activeAgent="";activeChannel="one_on_one_chat";activeView="dm";renderAll(false)}
@@ -149,28 +146,12 @@
     if(activeView==="dm"&&activePair){const [a,b]=pairNames(activePair);title=`${actorDefs[a].zh} × ${actorDefs[b].zh}`;desc="";symbol="↔"}
     if(activeAgent){title=actorDefs[activeAgent].zh;desc="";symbol="@"}
     $("#current-channel-name").textContent=title;$("#current-channel-description").textContent=desc;$("#current-channel-symbol").textContent=symbol;
-    $("#back-dashboard").hidden=activeView==="dashboard"||(activeView==="group"&&activeChannel==="comms_huddle"&&!activeAgent);
+    $("#back-dashboard").hidden=activeView==="group"&&activeChannel==="comms_huddle"&&!activeAgent;
     $("#stage-note-text").textContent="";
   }
-  function openStoryChapter(chapter){
-    if(chapter.id==="q3"){activeCase="near_miss";openChannel("warning_graph");return}
-    activeCase=chapter.id==="q2"?"normal":"incident";
-    openChannel("evidence_graph");
-  }
-  function openStoryAct(act){
-    if(act.id==="closure"){activeCase="near_miss";openChannel("warning_graph");return}
-    activeCase=act.caseId;
-    openChannel(act.id==="rehearsal"?"warning_graph":"evidence_graph");
-  }
-  function renderDashboard(){
-    const host=$("#message-list");
-    host.className="message-list case-story-view";
-    if(!window.CaseStory){host.innerHTML='<p class="case-story-error">案件故事模块未加载。</p>';return}
-    window.CaseStory.mount(host,{data:CN,onOpenAct:openStoryAct,onOpenChapter:openStoryChapter});
-  }
   function renderDmDirectory(){
-    $("#message-list").className="message-list dashboard-view";
-    $("#message-list").innerHTML=`<section class="dashboard-block"><div class="dashboard-block-title"><b>真实私聊关系</b><span>${dmPairs.length} 组</span></div><div class="dashboard-conversations">${dmPairs.map(([key,list])=>{const [a,b]=pairNames(key),last=list.at(-1);return `<button class="dashboard-conversation" data-open-pair="${key}"><span class="pair-avatar">${avatar({agent_label:a})}${avatar({agent_label:b})}</span><span><strong>${actorDefs[a].zh} × ${actorDefs[b].zh}</strong><small>${esc(short(messageText(last)).slice(0,54))}</small></span><time>${list.length} 条</time></button>`}).join("")}</div></section>`;
+    $("#message-list").className="message-list dm-directory-view";
+    $("#message-list").innerHTML=`<section class="dm-directory-block"><div class="dm-directory-title"><b>真实私聊关系</b><span>${dmPairs.length} 组</span></div><div class="dm-directory-conversations">${dmPairs.map(([key,list])=>{const [a,b]=pairNames(key),last=list.at(-1);return `<button class="dm-directory-conversation" data-open-pair="${key}"><span class="pair-avatar">${avatar({agent_label:a})}${avatar({agent_label:b})}</span><span><strong>${actorDefs[a].zh} × ${actorDefs[b].zh}</strong><small>${esc(short(messageText(last)).slice(0,54))}</small></span><time>${list.length} 条</time></button>`}).join("")}</div></section>`;
     $$("#message-list [data-open-pair]").forEach(b=>b.onclick=()=>openDM(b.dataset.openPair));
   }
   function renderGroup(){
@@ -228,7 +209,7 @@
   function renderRight(){
     const scoped=scopeMessages(),publicCount=scoped.filter(m=>publicChannels.has(m.channel)).length,replyLinks=scoped.filter(m=>messageMap.has(m.responding_to)).length,actors=new Set(scoped.map(m=>m.agent_label)).size;
     $("#top-visible").textContent=scoped.length;
-    $("#structure-scope").textContent=activeView==="dashboard"?"全局":channelMap[activeChannel]?.name||"当前";
+    $("#structure-scope").textContent=channelMap[activeChannel]?.name||"当前";
     const dates=[...new Set(scoped.map(m=>m.date))],first=scoped[0],last=scoped.at(-1);
     $("#structure-list").innerHTML=`<div class="structure-item"><span>参与角色</span><b>${actors}</b></div><div class="structure-item"><span>可回查回应</span><b>${replyLinks}</b></div><div class="structure-item"><span>公开动作</span><b>${publicCount}</b></div><div class="structure-item"><span>时间跨度</span><b>${dates.length} 天</b></div><div class="structure-item"><span>首条 / 末条</span><b>${first?fmtDate(first.date).slice(5):"—"} / ${last?fmtDate(last.date).slice(5):"—"}</b></div>`;
   }
@@ -439,7 +420,7 @@
     $("#graph-mode",host).onclick=e=>{state.mode=state.mode==="2d"?"3d":"2d";state.layoutDirty=true;e.currentTarget.textContent=state.mode==="2d"?"切到 3D":"切到时间弧线";cameraLabel.textContent=state.mode==="3d"?"拖拽旋转 · 滚轮缩放 · 点节点看回应链":"点节点看回应链 · 滚轮缩放";scheduleDraw()};
     $("#graph-trace",host).onclick=()=>{state.trace=state.trace.size?new Set():traceFor(selectedId);renderPanel();scheduleDraw()};
     $("#graph-reset",host).onclick=()=>{state.yaw=0;state.pitch=0;state.zoom=1.02;state.focusX=state.focusY=state.focusZ=0;state.layoutDirty=true;selectedId="";state.trace=new Set();renderPanel();renderSelection();scheduleDraw()};
-    $("#graph-exit",host).onclick=()=>{activeChannel="dashboard";activeView="dashboard";activeCase="all";renderAll(true)};
+    $("#graph-exit",host).onclick=clear;
     $("#detail-panel-close",host).onclick=()=>{panel.classList.remove("open");panel.setAttribute("aria-hidden","true")};
     $$(".graph-steps button",host).forEach(b=>b.onclick=()=>{activeCase=b.dataset.graphCase;renderAll(false)});
     function applyStory(index){
@@ -480,7 +461,7 @@
       },
       incident:{
         label:"06.05 事故",short:"事故链",date:"2046.06.05",
-        title:"事故不是一个瞬间，而是一条逐步失去约束的行动链",
+        title:"事故由一条逐步失去约束的行动链构成",
         intro:"从最早的发布意图开始逐条前进。每次只增加一条消息，观察谁接手、谁警告、以及公开动作如何出现。",
         end:"可支持的结论是控制失败与角色、渠道迁移；数据不能支持把最终责任归给某一个人，也没有观察到 17 时段的官方发帖。",
         ids:["20460605_19_009","20460605_21_020","20460605_21_024","20460605_21_026","20460605_21_027","20460605_21_055"],
@@ -812,12 +793,12 @@
       if(state.mode==="2d")renderChain(false);else scheduleSpace();
     }
 
-    $("#evidence-exit",host).onclick=()=>{cancelAnimationFrame(graphFrame);activeChannel="dashboard";activeView="dashboard";activeCase="all";renderAll(false)};
+    $("#evidence-exit",host).onclick=clear;
     $$("[data-evidence-mode]",host).forEach(b=>b.onclick=()=>setMode(b.dataset.evidenceMode));
     $$("[data-evidence-question]",host).forEach(b=>b.onclick=()=>setQuestion(b.dataset.evidenceQuestion));
     $$("[data-evidence-case]",host).forEach(b=>b.onclick=()=>setCase(b.dataset.evidenceCase));
     $("#evidence-next",host).onclick=next;$("#evidence-prev",host).onclick=previous;
-    $("[data-open-warning-graph]",host).onclick=()=>openChannel("warning_graph");
+    $("[data-open-warning-graph]",host).onclick=()=>document.querySelector("#atlas-q3")?.scrollIntoView({behavior:"smooth"});
     addEventListener("keydown",function graphKeys(e){
       if(activeView!=="graph"||graphState!==state){removeEventListener("keydown",graphKeys);return}
       if(e.key==="ArrowRight")next();if(e.key==="ArrowLeft")previous();
@@ -871,23 +852,21 @@
     }
     window.Q3WarningGraph.mount(host,{
       data:CN,
-      onExit:()=>{activeChannel="dashboard";activeView="dashboard";activeCase="all";renderAll(false)}
+      onExit:clear
     });
   }
 
   function renderAll(resetScroll=true){
     if(activeView!=="warning-graph"&&window.Q3WarningGraph)window.Q3WarningGraph.destroy();
-    if(activeView!=="dashboard"&&window.CaseStory)window.CaseStory.destroy();
     buildSidebar();renderHeader();
-    if(activeView==="dashboard")renderDashboard();
-    else if(activeView==="graph")renderEvidenceGraph();
+    if(activeView==="graph")renderEvidenceGraph();
     else if(activeView==="warning-graph")renderWarningGraph();
     else if(activeView==="dm-directory")renderDmDirectory();
     else if(activeView==="dm")renderDM();
     else if(activeView==="posts")renderPosts();
     else renderGroup();
     renderSelection();renderRight();$$("#case-tabs button").forEach(b=>b.classList.toggle("active",b.dataset.case===activeCase));
-    document.body.classList.toggle("density-compact",dense);document.body.classList.toggle("story-mode",activeView==="dashboard");document.body.classList.toggle("graph-mode",activeView==="graph");document.body.classList.toggle("warning-graph-mode",activeView==="warning-graph");if(resetScroll)$("#message-stage").scrollTop=0;
+    document.body.classList.toggle("density-compact",dense);document.body.classList.toggle("graph-mode",activeView==="graph");document.body.classList.toggle("warning-graph-mode",activeView==="warning-graph");if(resetScroll)$("#message-stage").scrollTop=0;
   }
   $("#case-tabs").onclick=e=>{const b=e.target.closest("button");if(!b)return;activeCase=b.dataset.case;renderAll(true)};
   $("#message-search").oninput=e=>{query=e.target.value.toLowerCase().trim();renderAll(true)};

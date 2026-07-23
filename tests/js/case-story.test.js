@@ -13,29 +13,17 @@ function loadData() {
 
 const data = loadData();
 
-test('story poses one question and preserves two independent verdict axes', () => {
-  assert.match(story.STORY.question, /为什么仍在最后一小时失去约束/);
-  assert.deepEqual(story.STORY.verdicts.map(item => item.id), ['action', 'authorization']);
-  assert.match(story.STORY.verdicts[0].finding, /有意/);
-  assert.match(story.STORY.verdicts[1].finding, /不可独立核验/);
-});
-
-test('story contains five ordered acts and three challenge chapters', () => {
-  assert.equal(story.STORY.acts.length, 5);
-  assert.deepEqual(story.STORY.acts.map(act => act.id), [
-    'rehearsal', 'control', 'boundary', 'collapse', 'closure'
-  ]);
-  assert.deepEqual(story.STORY.chapters.map(chapter => chapter.id), ['q1', 'q2', 'q3']);
-});
-
-test('every referenced story evidence id exists in the observed messages', () => {
-  const messageIds = new Set(data.messages.map(message => message.message_id));
-  const evidenceIds = story.STORY.acts.flatMap(act => act.evidenceIds || []);
-  evidenceIds.forEach(id => assert.ok(messageIds.has(id), `missing story evidence ${id}`));
-});
-
-test('story validator accepts the current data and closure is explicit', () => {
+test('retired story compatibility validator accepts the continuous atlas evidence', () => {
   assert.deepEqual(story.validateStory(data), []);
-  assert.match(story.STORY.closure, /正式链路控制/);
-  assert.match(story.STORY.closure, /跨账号/);
+  assert.equal(story.REQUIRED_MESSAGES.length, 6);
+});
+
+test('retired story compatibility surface has no active mount route', () => {
+  assert.equal(story.mount, undefined);
+  assert.doesNotThrow(() => story.destroy());
+});
+
+test('validator reports missing evidence without rendering a replacement dashboard', () => {
+  const trimmed = { messages: data.messages.filter(message => message.message_id !== story.REQUIRED_MESSAGES[0]) };
+  assert.match(story.validateStory(trimmed)[0], new RegExp(story.REQUIRED_MESSAGES[0]));
 });
