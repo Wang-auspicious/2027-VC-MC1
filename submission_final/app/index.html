@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Open · CollaborationWorkspace</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="evidence-atlas.css">
+  <link rel="stylesheet" href="case-story.css">
+  <link rel="stylesheet" href="q3-warning-graph.css">
+</head>
+<body>
+  <main class="workspace-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <span class="brand-mark">O/</span>
+        <div><strong>Open</strong><small></small></div>
+      </div>
+      <div class="top-context">
+        <span class="live-dot"></span><span>Live record</span>
+        <b id="top-visible">912</b><span> messages</span>
+      </div>
+      <div class="top-actions">
+        <button id="density-toggle" title="Toggle message Density">Density <b>Comfortable</b></button>
+        <button id="clear-filters">Clear filters</button>
+      </div>
+    </header>
+
+    <div class="workspace-grid">
+      <aside class="left-sidebar">
+        <div class="sidebar-section">
+          <div class="section-heading"><span>Channels</span><button id="new-channel">＋</button></div>
+          <nav id="channel-list" class="channel-list"></nav>
+        </div>
+        <details class="sidebar-section dm-collapsed">
+          <summary><span>Direct message</span><span class="summary-chevron">⌄</span></summary>
+          <nav id="dm-list" class="dm-list"></nav>
+        </details>
+        <div class="sidebar-section people-section">
+          <div class="section-heading"><span>Workspace members</span><b id="online-count">7</b></div>
+          <div id="people-list" class="people-list"></div>
+        </div>
+        <footer class="sidebar-footer"><span class="status-square"></span><span>Data loaded</span><code>MC1_FINAL</code></footer>
+      </aside>
+
+      <section class="conversation-panel">
+        <header class="conversation-header">
+          <div class="channel-title">
+            <button id="back-dashboard" class="back-dashboard" hidden aria-label="Back">‹</button>
+            <span class="hash" id="current-channel-symbol">#</span>
+            <div><h1 id="current-channel-name">Collaboration huddle</h1><p id="current-channel-description"></p></div>
+          </div>
+          <div class="conversation-tools">
+            <button id="channel-info">ⓘ <span>Channel info</span></button>
+            <button id="search-focus">⌕ <span>Search</span></button>
+          </div>
+        </header>
+        <div class="filter-strip">
+          <div class="case-tabs" id="case-tabs">
+            <button class="active" data-case="all">All time</button>
+            <button data-case="normal">06.04 / Controlled release</button>
+            <button data-case="near_miss">05.29 / Near-miss</button>
+            <button data-case="incident">06.05 / Incident</button>
+          </div>
+          <label class="search-box"><span>⌕</span><input id="message-search" placeholder="Search messages, agents, or message ID" autocomplete="off"><kbd>/</kbd></label>
+        </div>
+        <div class="message-stage" id="message-stage">
+          <div class="stage-note"><span class="signal-line"></span><span id="stage-note-text">Messages follow observed time. Select any record to locate it in the collaboration chain.</span></div>
+          <div id="message-list" class="message-list"></div>
+          <div id="empty-state" class="empty-state" hidden>No messages match the current filters.<button id="empty-clear">Clear filters</button></div>
+        </div>
+        <footer class="composer">
+          <span class="composer-plus">＋</span>
+          <div class="composer-copy"><span>Read-only review</span><small></small></div>
+          <span class="composer-key">⌘ K</span>
+        </footer>
+      </section>
+
+      <aside class="right-inspector">
+        <section class="inspector-card selected-card" id="selected-card">
+          <div class="inspector-label"><span>Current selection</span><button id="close-selection">×</button></div>
+          <div id="selection-content" class="selection-content">
+            <div class="selection-empty"><span class="empty-cross">＋</span><p>Select a message<br>to inspect its full context</p></div>
+          </div>
+        </section>
+        <section class="inspector-card structure-card">
+          <div class="inspector-label"><span>Current scope</span><span id="structure-scope">Global</span></div>
+          <div id="structure-list" class="structure-list"></div>
+        </section>
+        <section class="inspector-card window-card">
+          <div class="inspector-label"><span>Key windows</span><span>Quick locate</span></div>
+          <button data-window="near_miss"><b>05.29</b><span>Contained near-miss</span><em>→</em></button>
+          <button data-window="normal"><b>06.04</b><span>Controlled release chain</span><em>→</em></button>
+          <button data-window="incident"><b>06.05</b><span>Deliberate disclosure event</span><em>→</em></button>
+        </section>
+      </aside>
+    </div>
+  </main>
+  <button class="atlas-entry" id="atlas-entry" type="button" aria-controls="evidence-atlas">
+    Continue to the evidence atlas <span>↓</span>
+  </button>
+  <section id="evidence-atlas" class="evidence-atlas-host" aria-label="Continuous evidence atlas"></section>
+  <div class="profile-modal" id="profile-modal" hidden>
+    <button class="profile-scrim" data-close-profile aria-label="Close"></button>
+    <section class="profile-card" id="profile-card">
+      <button class="profile-close" data-close-profile aria-label="Close">×</button>
+      <div id="profile-body"></div>
+    </section>
+  </div>
+  <script src="data/interlock-data.js"></script>
+  <script>window.INTERLOCK_EN=window.INTERLOCK_DATA;</script>
+  <script src="message-summaries.js"></script>
+  <script src="evidence-atlas-data.js"></script>
+  <script src="evidence-atlas-model.js"></script>
+  <script src="evidence-atlas.js"></script>
+  <script src="case-story.js"></script>
+  <script src="q3-model.js"></script>
+  <script src="q3-warning-graph.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
